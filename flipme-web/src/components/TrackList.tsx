@@ -62,6 +62,7 @@ export default function TrackList({
             track={track}
             isSelected={selectedId === track.id}
             onSelect={onSelect}
+            hideInlinePreview={selectedId === track.id}
           />
         </div>
       ))}
