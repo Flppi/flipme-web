@@ -9,6 +9,7 @@ interface FlipStore {
   cardConfig: ShareCardConfig | null;
   isAnalyzing: boolean;
   isRecommending: boolean;
+  currentlyPlayingId: number | null;
 
   setUploadedImage: (image: string | null) => void;
   setAnalysis: (analysis: PhotoAnalysis | null) => void;
@@ -17,6 +18,7 @@ interface FlipStore {
   setCardConfig: (config: ShareCardConfig | null) => void;
   setIsAnalyzing: (value: boolean) => void;
   setIsRecommending: (value: boolean) => void;
+  setCurrentlyPlayingId: (id: number | null) => void;
   reset: () => void;
 }
 
@@ -28,6 +30,7 @@ const initialState = {
   cardConfig: null as ShareCardConfig | null,
   isAnalyzing: false,
   isRecommending: false,
+  currentlyPlayingId: null as number | null,
 };
 
 export const useFlipStore = create<FlipStore>((set) => ({
@@ -39,5 +42,6 @@ export const useFlipStore = create<FlipStore>((set) => ({
   setCardConfig: (config) => set({ cardConfig: config }),
   setIsAnalyzing: (value) => set({ isAnalyzing: value }),
   setIsRecommending: (value) => set({ isRecommending: value }),
+  setCurrentlyPlayingId: (id) => set({ currentlyPlayingId: id }),
   reset: () => set(initialState),
 }));

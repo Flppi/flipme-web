@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import SelectedTrackDock from "@/components/SelectedTrackDock";
 import TrackList from "@/components/TrackList";
 import { useFlipStore } from "@/store/useFlipStore";
 import type { DeezerTrack } from "@/types";
@@ -73,7 +74,9 @@ export default function ResultView() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-8 sm:px-6">
+    <main
+      className={`min-h-screen px-4 py-8 sm:px-6 ${selectedTrack ? "pb-52" : ""}`}
+    >
       <div className="mx-auto flex max-w-3xl flex-col gap-8">
         <header className="text-center">
           <h1 className="font-display text-2xl font-semibold text-flip-primary sm:text-3xl">
@@ -119,6 +122,7 @@ export default function ResultView() {
           </Link>
         </div>
       </div>
+      <SelectedTrackDock />
     </main>
   );
 }

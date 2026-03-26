@@ -1,4 +1,4 @@
-ISSUE_NUM=4
-BRANCH_NAME=feature/#4-음악-추천-엔진-구현
+ISSUE_NUM=6
+BRANCH_NAME=feature/#6-미리듣기-플레이어-구현
 TYPE=FEAT
-TITLE=음악 추천 엔진 구현
+TITLE=미리듣기 플레이어 구현

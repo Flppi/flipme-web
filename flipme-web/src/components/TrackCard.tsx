@@ -1,18 +1,22 @@
 "use client";
 
 import Image from "next/image";
+import AudioPlayer from "@/components/AudioPlayer";
 import type { DeezerTrack } from "@/types";
 
 export interface TrackCardProps {
   track: DeezerTrack;
   isSelected: boolean;
   onSelect: (track: DeezerTrack) => void;
+  /** 선택된 곡은 하단 독에서만 미리듣기(오디오 엘리먼트 중복 방지) */
+  hideInlinePreview?: boolean;
 }
 
 export default function TrackCard({
   track,
   isSelected,
   onSelect,
+  hideInlinePreview = false,
 }: TrackCardProps) {
   return (
     <article
@@ -38,27 +42,28 @@ export default function TrackCard({
           </h3>
           <p className="truncate text-xs text-flip-muted">{track.artist}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled
-            className="rounded-full border border-flip-muted/30 px-3 py-1 text-xs text-flip-muted"
-            aria-label="미리듣기는 다음 단계에서 제공됩니다"
-          >
-            미리듣기
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelect(track)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition-opacity ${
-              isSelected
-                ? "bg-flip-primary text-white"
-                : "bg-flip-accent text-white hover:opacity-90"
-            }`}
-          >
-            이 곡 선택
-          </button>
-        </div>
+        {hideInlinePreview ? (
+          <p className="text-[10px] text-flip-muted">
+            미리듣기는 하단 플레이어에서 재생할 수 있어요.
+          </p>
+        ) : (
+          <AudioPlayer
+            trackId={track.id}
+            previewUrl={track.previewUrl}
+            compact
+          />
+        )}
+        <button
+          type="button"
+          onClick={() => onSelect(track)}
+          className={`mt-1 w-full rounded-full px-3 py-2 text-xs font-semibold transition-opacity ${
+            isSelected
+              ? "bg-flip-primary text-white"
+              : "bg-flip-accent text-white hover:opacity-90"
+          }`}
+        >
+          이 곡 선택
+        </button>
       </div>
     </article>
   );
