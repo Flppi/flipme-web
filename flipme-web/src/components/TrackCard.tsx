@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import AudioPlayer from "@/components/AudioPlayer";
+import ExportButtons from "@/components/ExportButtons";
 import type { DeezerTrack } from "@/types";
 
 export interface TrackCardProps {
@@ -53,6 +54,7 @@ export default function TrackCard({
             compact
           />
         )}
+        <ExportButtons track={track} variant="compact" />
         <button
           type="button"
           onClick={() => onSelect(track)}
