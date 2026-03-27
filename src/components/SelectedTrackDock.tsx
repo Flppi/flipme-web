@@ -32,11 +32,7 @@ export default function SelectedTrackDock() {
             <p className="truncate text-xs text-flip-muted">{selectedTrack.artist}</p>
           </div>
         </div>
-        <AudioPlayer
-          trackId={selectedTrack.id}
-          previewUrl={selectedTrack.previewUrl}
-          compact={false}
-        />
+        <AudioPlayer track={selectedTrack} compact={false} />
         <Link
           href="/card"
           className="block w-full rounded-full bg-flip-accent py-3 text-center text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white"

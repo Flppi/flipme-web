@@ -5,6 +5,7 @@ import {
   buildExportLinks,
   DEFAULT_EXPORT_PLATFORMS,
 } from "@/lib/export-links";
+import { useFlipStore } from "@/store/useFlipStore";
 import type { DeezerTrack, ExportLink, ExportPlatform } from "@/types";
 
 interface ExportButtonsProps {
@@ -91,10 +92,26 @@ export default function ExportButtons({
   track,
   variant = "full",
 }: ExportButtonsProps) {
+  const analysis = useFlipStore((s) => s.analysis);
+  const trackEvent = useFlipStore((s) => s.trackEvent);
+
   const links: ExportLink[] = useMemo(
     () => buildExportLinks(track.title, track.artist, DEFAULT_EXPORT_PLATFORMS),
     [track.artist, track.title],
   );
+
+  const logExport = (platform?: ExportPlatform) => {
+    trackEvent({
+      eventType: "export_click",
+      trackId: track.id,
+      trackTitle: track.title,
+      trackArtist: track.artist,
+      layer: track.layer,
+      photoMood: analysis?.mood,
+      photoEnergy: analysis?.energy,
+      ...(platform ? { platform } : {}),
+    });
+  };
 
   if (variant === "compact") {
     return (
@@ -109,6 +126,9 @@ export default function ExportButtons({
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => {
+              logExport(link.platform);
+            }}
             className={`flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING[link.platform]}`}
             aria-label={`${platformLabel(link.platform)}에서 열기`}
           >
@@ -119,6 +139,9 @@ export default function ExportButtons({
           href={track.deezerUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => {
+            logExport();
+          }}
           className={`flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING.deezer}`}
           aria-label="Deezer에서 이 곡 열기"
         >
@@ -146,6 +169,9 @@ export default function ExportButtons({
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => {
+              logExport(link.platform);
+            }}
             className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING[link.platform]}`}
           >
             <PlatformGlyph platform={link.platform} className="h-5 w-5 shrink-0" />
@@ -156,6 +182,9 @@ export default function ExportButtons({
           href={track.deezerUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => {
+            logExport();
+          }}
           className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING.deezer}`}
         >
           <PlatformGlyph platform="deezer" className="h-5 w-5 shrink-0" />

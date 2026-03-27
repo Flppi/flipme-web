@@ -1,4 +1,4 @@
-import type { DeezerTrack } from "@/types";
+import type { AISongRecommendation, DeezerSearchHit, DeezerTrack } from "@/types";
 
 const DEEZER_BASE = "https://api.deezer.com";
 
@@ -26,7 +26,7 @@ interface DeezerSearchSuccess {
   data?: DeezerRawTrack[];
 }
 
-function mapRawTrack(track: DeezerRawTrack): DeezerTrack | null {
+function mapRawTrack(track: DeezerRawTrack): DeezerSearchHit | null {
   const preview = track.preview;
   const artistName = track.artist?.name;
   const albumTitle = track.album?.title;
@@ -64,10 +64,21 @@ async function fetchDeezerSearch(url: string): Promise<Response> {
   return res;
 }
 
+/** 문자열 유사도(정규화 후 부분 일치) */
+export function isSimilar(a: string, b: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9가-힣]/g, "");
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (na.length === 0 || nb.length === 0) {
+    return false;
+  }
+  return na.includes(nb) || nb.includes(na);
+}
+
 export async function searchTracks(
   query: string,
   limit: number = 25,
-): Promise<DeezerTrack[]> {
+): Promise<DeezerSearchHit[]> {
   const url = `${DEEZER_BASE}/search?q=${encodeURIComponent(query)}&limit=${limit}`;
   const res = await fetchDeezerSearch(url);
 
@@ -83,7 +94,7 @@ export async function searchTracks(
     return [];
   }
 
-  const mapped: DeezerTrack[] = [];
+  const mapped: DeezerSearchHit[] = [];
   for (const row of rows) {
     if (row.preview) {
       const t = mapRawTrack(row);
@@ -95,17 +106,45 @@ export async function searchTracks(
   return mapped;
 }
 
-export async function searchTracksSequential(
-  queries: string[],
-  limit: number,
-  delayBetweenMs: number,
-): Promise<DeezerTrack[][]> {
-  const out: DeezerTrack[][] = [];
-  for (let i = 0; i < queries.length; i++) {
-    if (i > 0) {
-      await delay(delayBetweenMs);
+/** GPT가 추천한 곡을 Deezer에서 곡명·아티스트 기준으로 매칭한다. */
+export async function findTracksOnDeezer(songs: AISongRecommendation[]): Promise<DeezerTrack[]> {
+  const found: DeezerTrack[] = [];
+  const seenIds = new Set<number>();
+
+  for (let i = 0; i < songs.length; i++) {
+    const song = songs[i];
+    const query = `${song.artist} ${song.title}`;
+    const results = await searchTracks(query, 5);
+
+    const strict = results.find(
+      (t) =>
+        t.previewUrl &&
+        !seenIds.has(t.id) &&
+        isSimilar(t.title, song.title) &&
+        isSimilar(t.artist, song.artist),
+    );
+    const relaxed =
+      strict ??
+      results.find(
+        (t) =>
+          t.previewUrl &&
+          !seenIds.has(t.id) &&
+          (isSimilar(t.title, song.title) || isSimilar(t.artist, song.artist)),
+      );
+
+    if (relaxed) {
+      seenIds.add(relaxed.id);
+      found.push({
+        ...relaxed,
+        layer: song.layer,
+        reason: song.reason,
+      });
     }
-    out.push(await searchTracks(queries[i], limit));
+
+    if (i < songs.length - 1) {
+      await delay(200);
+    }
   }
-  return out;
+
+  return found;
 }

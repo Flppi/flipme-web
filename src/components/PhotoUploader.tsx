@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { resizeImage } from "@/lib/resize-image";
 import { useFlipStore } from "@/store/useFlipStore";
-import type { PhotoAnalysis } from "@/types";
+import type { DeezerTrack, PhotoAnalysis } from "@/types";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ACCEPT_ATTR =
@@ -37,6 +37,7 @@ export default function PhotoUploader() {
   const uploadedImage = useFlipStore((s) => s.uploadedImage);
   const setUploadedImage = useFlipStore((s) => s.setUploadedImage);
   const setAnalysis = useFlipStore((s) => s.setAnalysis);
+  const setRecommendations = useFlipStore((s) => s.setRecommendations);
   const isAnalyzing = useFlipStore((s) => s.isAnalyzing);
   const setIsAnalyzing = useFlipStore((s) => s.setIsAnalyzing);
 
@@ -56,13 +57,14 @@ export default function PhotoUploader() {
         const dataUrl = await resizeImage(file, 1024, 0.8);
         setUploadedImage(dataUrl);
         setAnalysis(null);
+        setRecommendations([]);
       } catch {
         setProcessError(
           "잠시 문제가 생겼어요. 다른 사진으로 다시 시도해 주세요.",
         );
       }
     },
-    [setAnalysis, setUploadedImage],
+    [setAnalysis, setRecommendations, setUploadedImage],
   );
 
   const onFileChange = useCallback(
@@ -94,31 +96,37 @@ export default function PhotoUploader() {
     setAnalyzeError(null);
     setIsAnalyzing(true);
     try {
-      const res = await fetch("/api/analyze", {
+      const res = await fetch("/api/analyze-and-recommend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: uploadedImage }),
       });
       const data = (await res.json()) as {
         analysis?: PhotoAnalysis;
+        tracks?: DeezerTrack[];
         error?: string;
       };
       if (!res.ok) {
-        setAnalyzeError("잠시 문제가 생겼어요. 다시 시도해 주세요.");
+        setAnalyzeError(
+          typeof data.error === "string" && data.error.length > 0
+            ? data.error
+            : "잠시 문제가 생겼어요. 다시 시도해 주세요.",
+        );
         return;
       }
-      if (!data.analysis) {
+      if (!data.analysis || !data.tracks?.length) {
         setAnalyzeError("잠시 문제가 생겼어요. 다시 시도해 주세요.");
         return;
       }
       setAnalysis(data.analysis);
+      setRecommendations(data.tracks);
       router.push("/result");
     } catch {
       setAnalyzeError("잠시 문제가 생겼어요. 다시 시도해 주세요.");
     } finally {
       setIsAnalyzing(false);
     }
-  }, [router, setAnalysis, setIsAnalyzing, uploadedImage]);
+  }, [router, setAnalysis, setIsAnalyzing, setRecommendations, uploadedImage]);
 
   const showDropZone = !uploadedImage;
 
@@ -188,7 +196,7 @@ export default function PhotoUploader() {
                   aria-hidden
                 />
                 <p className="px-4 text-center text-sm font-medium text-flip-primary">
-                  사진의 감성을 읽고 있어요...
+                  사진의 감성을 읽고 곡을 고르고 있어요...
                 </p>
               </div>
             ) : null}
@@ -208,6 +216,7 @@ export default function PhotoUploader() {
                 onClick={() => {
                   setUploadedImage(null);
                   setAnalysis(null);
+                  setRecommendations([]);
                   setProcessError(null);
                   setAnalyzeError(null);
                 }}

@@ -1,7 +1,7 @@
 "use client";
 
 import TrackCard from "@/components/TrackCard";
-import type { DeezerTrack } from "@/types";
+import type { DeezerTrack, RecommendationLayer } from "@/types";
 
 interface TrackListProps {
   tracks: DeezerTrack[];
@@ -9,6 +9,12 @@ interface TrackListProps {
   onSelect: (track: DeezerTrack) => void;
   isLoading: boolean;
 }
+
+const LAYERS: { key: RecommendationLayer; label: string; icon: string }[] = [
+  { key: "anchor", label: "이 분위기의 대표곡", icon: "🎯" },
+  { key: "complement", label: "의외의 조합", icon: "🎨" },
+  { key: "discovery", label: "숨은 보석", icon: "💎" },
+];
 
 function TrackCardSkeleton() {
   return (
@@ -71,17 +77,33 @@ export default function TrackList({
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-2 pt-1 snap-x snap-mandatory md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:snap-none">
-      {tracks.map((track) => (
-        <div key={track.id} className="snap-start md:snap-none">
-          <TrackCard
-            track={track}
-            isSelected={selectedId === track.id}
-            onSelect={onSelect}
-            hideInlinePreview={selectedId === track.id}
-          />
-        </div>
-      ))}
+    <div className="flex flex-col gap-10">
+      {LAYERS.map(({ key, label, icon }) => {
+        const layerTracks = tracks.filter((t) => t.layer === key);
+        if (layerTracks.length === 0) {
+          return null;
+        }
+        return (
+          <section key={key} aria-label={label}>
+            <h3 className="mb-4 flex items-center gap-2 font-display text-base font-semibold text-flip-primary">
+              <span aria-hidden>{icon}</span>
+              {label}
+            </h3>
+            <div className="flex gap-4 overflow-x-auto pb-2 pt-1 snap-x snap-mandatory md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:snap-none">
+              {layerTracks.map((track) => (
+                <div key={track.id} className="snap-start md:snap-none">
+                  <TrackCard
+                    track={track}
+                    isSelected={selectedId === track.id}
+                    onSelect={onSelect}
+                    hideInlinePreview={selectedId === track.id}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

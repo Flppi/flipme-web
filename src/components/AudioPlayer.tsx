@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFlipStore } from "@/store/useFlipStore";
+import type { DeezerTrack } from "@/types";
 
 function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) {
@@ -13,22 +14,20 @@ function formatTime(sec: number): string {
 }
 
 interface AudioPlayerProps {
-  trackId: number;
-  previewUrl: string;
+  track: DeezerTrack;
   compact?: boolean;
 }
 
-export default function AudioPlayer({
-  trackId,
-  previewUrl,
-  compact = false,
-}: AudioPlayerProps) {
+export default function AudioPlayer({ track, compact = false }: AudioPlayerProps) {
+  const { id: trackId, previewUrl } = track;
   const audioRef = useRef<HTMLAudioElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
+  const analysis = useFlipStore((s) => s.analysis);
+  const trackEvent = useFlipStore((s) => s.trackEvent);
   const currentlyPlayingId = useFlipStore((s) => s.currentlyPlayingId);
   const setCurrentlyPlayingId = useFlipStore((s) => s.setCurrentlyPlayingId);
 
@@ -79,7 +78,16 @@ export default function AudioPlayer({
     setIsPlaying(false);
     setCurrentTime(0);
     setCurrentlyPlayingId(null);
-  }, [setCurrentlyPlayingId]);
+    trackEvent({
+      eventType: "track_play_complete",
+      trackId: track.id,
+      trackTitle: track.title,
+      trackArtist: track.artist,
+      layer: track.layer,
+      photoMood: analysis?.mood,
+      photoEnergy: analysis?.energy,
+    });
+  }, [analysis?.energy, analysis?.mood, setCurrentlyPlayingId, track, trackEvent]);
 
   const togglePlay = useCallback(() => {
     const el = audioRef.current;
@@ -92,6 +100,15 @@ export default function AudioPlayer({
       setIsPlaying(false);
       return;
     }
+    trackEvent({
+      eventType: "track_play",
+      trackId: track.id,
+      trackTitle: track.title,
+      trackArtist: track.artist,
+      layer: track.layer,
+      photoMood: analysis?.mood,
+      photoEnergy: analysis?.energy,
+    });
     setCurrentlyPlayingId(trackId);
     void el.play().then(
       () => {
@@ -102,7 +119,15 @@ export default function AudioPlayer({
         setIsPlaying(false);
       },
     );
-  }, [isPlaying, setCurrentlyPlayingId, trackId]);
+  }, [
+    analysis?.energy,
+    analysis?.mood,
+    isPlaying,
+    setCurrentlyPlayingId,
+    track,
+    trackEvent,
+    trackId,
+  ]);
 
   const seekFromClientX = useCallback(
     (clientX: number) => {
