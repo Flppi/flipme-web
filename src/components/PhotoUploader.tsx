@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { resizeImage } from "@/lib/resize-image";
 import { useFlipStore } from "@/store/useFlipStore";
 import type { DeezerTrack, PhotoAnalysis } from "@/types";
@@ -29,10 +29,25 @@ function validateImageFile(file: File): string | null {
   return null;
 }
 
+interface PrefetchResult {
+  ok: boolean;
+  analysis?: PhotoAnalysis;
+  tracks?: DeezerTrack[];
+  error?: string;
+}
+
+interface PrefetchHandle {
+  abort: AbortController;
+  promise: Promise<PrefetchResult | null>;
+}
+
 export default function PhotoUploader() {
   const router = useRouter();
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const prefetchRef = useRef<PrefetchHandle | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const uploadedImage = useFlipStore((s) => s.uploadedImage);
   const setUploadedImage = useFlipStore((s) => s.setUploadedImage);
@@ -43,6 +58,142 @@ export default function PhotoUploader() {
 
   const [processError, setProcessError] = useState<string | null>(null);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [prefetchStatus, setPrefetchStatus] = useState<
+    "idle" | "loading" | "done"
+  >("idle");
+  const [cameraReady, setCameraReady] = useState<boolean | null>(null);
+
+  // ── Camera lifecycle ──────────────────────────────────────────────
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (uploadedImage) {
+      stopCamera();
+      return;
+    }
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setCameraReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        setCameraReady(true);
+      } catch {
+        if (!cancelled) setCameraReady(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      stopCamera();
+    };
+  }, [uploadedImage, stopCamera]);
+
+  const videoCallbackRef = useCallback(
+    (el: HTMLVideoElement | null) => {
+      videoRef.current = el;
+      if (el && streamRef.current) {
+        el.srcObject = streamRef.current;
+      }
+    },
+    // streamRef is stable; this is intentionally empty for the callback ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  // Re-attach srcObject when cameraReady toggles and the element exists
+  useEffect(() => {
+    if (cameraReady && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraReady]);
+
+  // ── Prefetch ──────────────────────────────────────────────────────
+
+  const cancelPrefetch = useCallback(() => {
+    prefetchRef.current?.abort.abort();
+    prefetchRef.current = null;
+    setPrefetchStatus("idle");
+  }, []);
+
+  const startPrefetch = useCallback(
+    (imageDataUrl: string) => {
+      cancelPrefetch();
+      const abort = new AbortController();
+      setPrefetchStatus("loading");
+
+      const promise: Promise<PrefetchResult | null> = fetch(
+        "/api/analyze-and-recommend",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: imageDataUrl }),
+          signal: abort.signal,
+        },
+      )
+        .then(async (res) => {
+          const json = (await res.json()) as Omit<PrefetchResult, "ok">;
+          return { ok: res.ok, ...json } as PrefetchResult;
+        })
+        .then((data) => {
+          if (!abort.signal.aborted) {
+            setPrefetchStatus(
+              data.ok && data.analysis && data.tracks && data.tracks.length > 0
+                ? "done"
+                : "idle",
+            );
+          }
+          return data;
+        })
+        .catch(() => {
+          if (!abort.signal.aborted) setPrefetchStatus("idle");
+          return null;
+        });
+
+      prefetchRef.current = { abort, promise };
+    },
+    [cancelPrefetch],
+  );
+
+  // ── Image handling ────────────────────────────────────────────────
+
+  const setImage = useCallback(
+    (dataUrl: string) => {
+      setUploadedImage(dataUrl);
+      setAnalysis(null);
+      setRecommendations([]);
+      setProcessError(null);
+      setAnalyzeError(null);
+      startPrefetch(dataUrl);
+    },
+    [setUploadedImage, setAnalysis, setRecommendations, startPrefetch],
+  );
 
   const processFile = useCallback(
     async (file: File) => {
@@ -54,17 +205,15 @@ export default function PhotoUploader() {
         return;
       }
       try {
-        const dataUrl = await resizeImage(file, 1024, 0.8);
-        setUploadedImage(dataUrl);
-        setAnalysis(null);
-        setRecommendations([]);
+        const dataUrl = await resizeImage(file, 512, 0.6);
+        setImage(dataUrl);
       } catch {
         setProcessError(
           "잠시 문제가 생겼어요. 다른 사진으로 다시 시도해 주세요.",
         );
       }
     },
-    [setAnalysis, setRecommendations, setUploadedImage],
+    [setImage],
   );
 
   const onFileChange = useCallback(
@@ -76,37 +225,46 @@ export default function PhotoUploader() {
     [processFile],
   );
 
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const file = e.dataTransfer.files?.[0];
-      if (file) void processFile(file);
-    },
-    [processFile],
-  );
+  const captureFromCamera = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) return;
+    const sw = video.videoWidth;
+    const sh = video.videoHeight;
+    const maxDim = 512;
+    const ratio = Math.min(maxDim / sw, maxDim / sh, 1);
+    const dw = Math.round(sw * ratio);
+    const dh = Math.round(sh * ratio);
+    const canvas = document.createElement("canvas");
+    canvas.width = dw;
+    canvas.height = dh;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, dw, dh);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+    setImage(dataUrl);
+  }, [setImage]);
 
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
+  // ── Analyze (uses prefetch if available) ──────────────────────────
 
   const handleAnalyze = useCallback(async () => {
     if (!uploadedImage) return;
     setAnalyzeError(null);
     setIsAnalyzing(true);
     try {
-      const res = await fetch("/api/analyze-and-recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: uploadedImage }),
-      });
-      const data = (await res.json()) as {
-        analysis?: PhotoAnalysis;
-        tracks?: DeezerTrack[];
-        error?: string;
-      };
-      if (!res.ok) {
+      let data: PrefetchResult | null = null;
+      if (prefetchRef.current && !prefetchRef.current.abort.signal.aborted) {
+        data = await prefetchRef.current.promise;
+      }
+      if (!data || !data.ok) {
+        const res = await fetch("/api/analyze-and-recommend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: uploadedImage }),
+        });
+        const json = (await res.json()) as Omit<PrefetchResult, "ok">;
+        data = { ok: res.ok, ...json };
+      }
+      if (!data.ok) {
         setAnalyzeError(
           typeof data.error === "string" && data.error.length > 0
             ? data.error
@@ -125,58 +283,63 @@ export default function PhotoUploader() {
       setAnalyzeError("잠시 문제가 생겼어요. 다시 시도해 주세요.");
     } finally {
       setIsAnalyzing(false);
+      setPrefetchStatus("idle");
     }
   }, [router, setAnalysis, setIsAnalyzing, setRecommendations, uploadedImage]);
 
-  const showDropZone = !uploadedImage;
+  // ── D&D handlers ──────────────────────────────────────────────────
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const file = e.dataTransfer.files?.[0];
+      if (file) void processFile(file);
+    },
+    [processFile],
+  );
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  // ── Main button ───────────────────────────────────────────────────
+
+  const handleMainButton = useCallback(() => {
+    if (isAnalyzing) return;
+    if (uploadedImage) {
+      void handleAnalyze();
+    } else if (cameraReady && streamRef.current) {
+      captureFromCamera();
+    } else {
+      cameraInputRef.current?.click();
+    }
+  }, [isAnalyzing, uploadedImage, cameraReady, captureFromCamera, handleAnalyze]);
+
+  const handleReset = useCallback(() => {
+    cancelPrefetch();
+    setUploadedImage(null);
+    setAnalysis(null);
+    setRecommendations([]);
+    setProcessError(null);
+    setAnalyzeError(null);
+    setCameraReady(null);
+  }, [cancelPrefetch, setUploadedImage, setAnalysis, setRecommendations]);
+
+  const prefetchDone = prefetchStatus === "done" && !isAnalyzing;
+
+  // ── Render ────────────────────────────────────────────────────────
 
   return (
     <section className="flex w-full flex-col gap-4 animate-slide-up">
-      {showDropZone ? (
-        <div
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              galleryInputRef.current?.click();
-            }
-          }}
-          onClick={() => galleryInputRef.current?.click()}
-          onDrop={onDrop}
-          onDragOver={onDragOver}
-          className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-flip-muted/40 bg-white/60 px-6 py-12 text-center transition-colors hover:border-flip-accent/60 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
-        >
-          <span
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-flip-surface text-flip-accent"
-            aria-hidden
-          >
-            <svg
-              className="h-7 w-7"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3A1.5 1.5 0 001.5 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008H12V8.25z"
-              />
-            </svg>
-          </span>
-          <p className="font-display text-base font-semibold text-flip-primary">
-            사진을 올려주세요
-          </p>
-          <p className="text-sm text-flip-muted">
-            끌어다 놓거나 탭해서 갤러리에서 선택
-          </p>
-        </div>
-      ) : null}
-
-      {!showDropZone && uploadedImage ? (
-        <div className="flex flex-col gap-4 rounded-2xl border border-flip-muted/20 bg-white p-4 shadow-sm">
-          <div className="relative mx-auto h-72 w-full max-w-md overflow-hidden rounded-xl bg-flip-surface">
+      {/* ── Viewfinder / Preview / Fallback ── */}
+      <div
+        className="relative mx-auto h-80 w-full max-w-md overflow-hidden rounded-2xl border border-flip-muted/20 bg-black shadow-sm"
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+      >
+        {uploadedImage ? (
+          <>
             <Image
               src={uploadedImage}
               alt="업로드한 사진 미리보기"
@@ -187,7 +350,7 @@ export default function PhotoUploader() {
             />
             {isAnalyzing ? (
               <div
-                className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-white/35 backdrop-blur-md animate-pulse-soft"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/30 backdrop-blur-md animate-pulse-soft"
                 aria-live="polite"
                 aria-busy="true"
               >
@@ -195,62 +358,192 @@ export default function PhotoUploader() {
                   className="h-14 w-14 rounded-full bg-gradient-to-br from-flip-warm to-flip-accent opacity-90"
                   aria-hidden
                 />
-                <p className="px-4 text-center text-sm font-medium text-flip-primary">
+                <p className="px-4 text-center text-sm font-medium text-white">
                   사진의 감성을 읽고 곡을 고르고 있어요...
                 </p>
               </div>
             ) : null}
+            {prefetchStatus === "loading" && !isAnalyzing ? (
+              <div className="absolute bottom-3 left-3 right-3 overflow-hidden rounded-full bg-white/20 backdrop-blur-sm">
+                <div className="h-1 animate-prefetch-bar rounded-full bg-flip-accent/80" />
+              </div>
+            ) : null}
+          </>
+        ) : cameraReady ? (
+          <video
+            ref={videoCallbackRef}
+            autoPlay
+            playsInline
+            muted
+            className="h-full w-full object-cover"
+          />
+        ) : cameraReady === false ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 bg-flip-surface px-6 text-center">
+            <span
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-flip-accent"
+              aria-hidden
+            >
+              <svg
+                className="h-7 w-7"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3A1.5 1.5 0 001.5 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008H12V8.25z"
+                />
+              </svg>
+            </span>
+            <p className="font-display text-base font-semibold text-flip-primary">
+              사진을 올려주세요
+            </p>
+            <p className="text-sm text-flip-muted">
+              아래 버튼으로 촬영하거나 + 버튼으로 갤러리에서 선택
+            </p>
           </div>
-          {!isAnalyzing ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <button
-                type="button"
-                onClick={handleAnalyze}
-                className="rounded-full bg-flip-accent px-6 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 active:opacity-80"
-                aria-label="사진 분위기 분석하기"
-              >
-                분석하기
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setUploadedImage(null);
-                  setAnalysis(null);
-                  setRecommendations([]);
-                  setProcessError(null);
-                  setAnalyzeError(null);
-                }}
-                className="rounded-full border border-flip-muted/40 px-6 py-3 text-sm font-medium text-flip-muted transition-colors hover:border-flip-accent hover:text-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
-                aria-label="다른 사진으로 바꾸기"
-              >
-                다른 사진 선택
-              </button>
-            </div>
-          ) : null}
+        ) : (
+          <div className="flex h-full items-center justify-center bg-flip-surface">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-flip-muted/30 border-t-flip-accent" />
+          </div>
+        )}
+      </div>
+
+      {/* ── Status messages ── */}
+      {uploadedImage && prefetchStatus === "loading" && !isAnalyzing ? (
+        <p className="text-center text-xs text-flip-muted animate-fade-in">
+          어울리는 곡을 미리 찾고 있어요...
+        </p>
+      ) : null}
+      {prefetchDone ? (
+        <p className="text-center text-xs font-medium text-flip-primary animate-fade-in">
+          준비 완료! 아래 체크 버튼을 눌러 결과를 확인하세요
+        </p>
+      ) : null}
+
+      {/* ── "다른 사진 선택" ── */}
+      {uploadedImage && !isAnalyzing ? (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="rounded-full border border-flip-muted/40 px-5 py-2 text-sm font-medium text-flip-muted transition-colors hover:border-flip-accent hover:text-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
+            aria-label="다른 사진으로 바꾸기"
+          >
+            다른 사진 선택
+          </button>
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+      {/* ── Action buttons: Main (camera / check) + Gallery (+) ── */}
+      <div className="flex items-center justify-center gap-3">
         <button
           type="button"
+          onClick={handleMainButton}
           disabled={isAnalyzing}
+          className={`flex items-center justify-center rounded-full shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${
+            isAnalyzing
+              ? "h-16 w-16 bg-flip-primary text-white"
+              : uploadedImage
+                ? prefetchDone
+                  ? "h-16 w-16 bg-emerald-500 text-white shadow-emerald-500/30 focus-visible:ring-emerald-500 animate-pulse-soft"
+                  : "h-16 w-16 bg-flip-primary text-white focus-visible:ring-flip-primary"
+                : "h-16 w-16 border-2 border-flip-muted/30 bg-white text-flip-primary hover:border-flip-accent hover:text-flip-accent focus-visible:ring-flip-accent"
+          }`}
+          aria-label={
+            isAnalyzing
+              ? "분석 중..."
+              : uploadedImage
+                ? "결과 보기"
+                : "사진 촬영"
+          }
+        >
+          {isAnalyzing ? (
+            <svg
+              className="h-6 w-6 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+          ) : uploadedImage ? (
+            <svg
+              className="h-7 w-7"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4.5 12.75l6 6 9-13.5"
+              />
+            </svg>
+          ) : (
+            <svg
+              className="h-7 w-7"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"
+              />
+            </svg>
+          )}
+        </button>
+
+        <button
+          type="button"
           onClick={() => galleryInputRef.current?.click()}
-          className="rounded-full border border-flip-primary/20 bg-white px-5 py-2.5 text-sm font-medium text-flip-primary shadow-sm transition-colors hover:border-flip-accent hover:text-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          disabled={isAnalyzing}
+          className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-flip-muted/30 bg-white text-flip-primary shadow-sm transition-colors hover:border-flip-accent hover:text-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 disabled:opacity-50"
           aria-label="갤러리에서 사진 선택"
         >
-          갤러리에서 선택
-        </button>
-        <button
-          type="button"
-          disabled={isAnalyzing}
-          onClick={() => cameraInputRef.current?.click()}
-          className="rounded-full border border-flip-primary/20 bg-white px-5 py-2.5 text-sm font-medium text-flip-primary shadow-sm transition-colors hover:border-flip-accent hover:text-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-          aria-label="카메라로 사진 촬영"
-        >
-          카메라로 촬영
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            aria-hidden
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 4.5v15m7.5-7.5h-15"
+            />
+          </svg>
         </button>
       </div>
 
+      {/* ── Hidden file inputs ── */}
       <input
         ref={galleryInputRef}
         type="file"

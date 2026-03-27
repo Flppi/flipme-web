@@ -106,44 +106,51 @@ export async function searchTracks(
   return mapped;
 }
 
-/** GPT가 추천한 곡을 Deezer에서 곡명·아티스트 기준으로 매칭한다. */
+/** 한 곡을 Deezer에서 검색·매칭 (내부 헬퍼) */
+async function matchSingle(
+  song: AISongRecommendation,
+): Promise<{ hit: DeezerSearchHit; song: AISongRecommendation } | null> {
+  const query = `${song.artist} ${song.title}`;
+  const results = await searchTracks(query, 5);
+
+  const strict = results.find(
+    (t) =>
+      t.previewUrl &&
+      isSimilar(t.title, song.title) &&
+      isSimilar(t.artist, song.artist),
+  );
+  const relaxed =
+    strict ??
+    results.find(
+      (t) =>
+        t.previewUrl &&
+        (isSimilar(t.title, song.title) || isSimilar(t.artist, song.artist)),
+    );
+
+  return relaxed ? { hit: relaxed, song } : null;
+}
+
+/** GPT가 추천한 곡을 Deezer에서 곡명·아티스트 기준으로 전체 병렬 매칭한다. */
 export async function findTracksOnDeezer(songs: AISongRecommendation[]): Promise<DeezerTrack[]> {
+  const results = await Promise.allSettled(songs.map(matchSingle));
+
   const found: DeezerTrack[] = [];
   const seenIds = new Set<number>();
 
-  for (let i = 0; i < songs.length; i++) {
-    const song = songs[i];
-    const query = `${song.artist} ${song.title}`;
-    const results = await searchTracks(query, 5);
-
-    const strict = results.find(
-      (t) =>
-        t.previewUrl &&
-        !seenIds.has(t.id) &&
-        isSimilar(t.title, song.title) &&
-        isSimilar(t.artist, song.artist),
-    );
-    const relaxed =
-      strict ??
-      results.find(
-        (t) =>
-          t.previewUrl &&
-          !seenIds.has(t.id) &&
-          (isSimilar(t.title, song.title) || isSimilar(t.artist, song.artist)),
-      );
-
-    if (relaxed) {
-      seenIds.add(relaxed.id);
-      found.push({
-        ...relaxed,
-        layer: song.layer,
-        reason: song.reason,
-      });
+  for (const r of results) {
+    if (r.status !== "fulfilled" || !r.value) {
+      continue;
     }
-
-    if (i < songs.length - 1) {
-      await delay(200);
+    const { hit, song } = r.value;
+    if (seenIds.has(hit.id)) {
+      continue;
     }
+    seenIds.add(hit.id);
+    found.push({
+      ...hit,
+      layer: song.layer,
+      reason: song.reason,
+    });
   }
 
   return found;

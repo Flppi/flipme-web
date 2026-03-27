@@ -16,55 +16,22 @@ Analyze this photo and return JSON with:
 
 Return ONLY valid JSON. No markdown, no explanation.`;
 
-const UNIFIED_PROMPT = `You are a music curator who recommends songs based on photos.
-Analyze this photo and recommend songs. Return JSON only:
+const UNIFIED_PROMPT = `You are a music curator. Analyze this photo's mood and recommend 15 real songs.
+Return JSON:
+{"analysis":{"mood":"한국어 감성","scene":"한국어 상황","colors":["#hex","#hex","#hex"],"keywords":["eng","keywords","for","display","only"],"energy":0.0,"description":"한국어 한 문장"},"songs":[{"title":"exact title","artist":"exact artist","reason":"한국어 이유 1문장","layer":"anchor"}]}
 
-{
-  "analysis": {
-    "mood": "한국어 감성 키워드 (예: 잔잔한, 몽환적인, 활기찬)",
-    "scene": "장소/상황 설명 (한국어)",
-    "colors": ["#hex", "#hex", "#hex"],
-    "keywords": ["english", "search", "keywords", "for", "display"],
-    "energy": 0.0 to 1.0,
-    "description": "이 사진의 감성을 한 문장으로 (한국어)"
-  },
-  "songs": [
-    {
-      "title": "exact song title",
-      "artist": "exact artist name",
-      "reason": "이 사진과 어울리는 이유 (한국어, 1문장)",
-      "layer": "anchor"
-    }
-  ]
-}
+15 songs, 3 layers (5 each):
+- anchor: iconic songs for this exact mood/scene
+- complement: same emotion, unexpected genres
+- discovery: lesser-known, recent indie tracks
 
-Song recommendation rules:
-- Recommend exactly 15 songs in 3 layers (5 songs each):
-
-  LAYER "anchor" (5 songs):
-  Songs that are genre-defining or iconic for THIS SPECIFIC mood/scene.
-  NOT Billboard chart hits unless they genuinely match this exact vibe.
-  Think: "the obvious first picks for a playlist with this exact mood."
-
-  LAYER "complement" (5 songs):
-  Same emotional tone, but from adjacent or unexpected genres.
-  The listener should think "I wouldn't have searched for this genre, but it fits perfectly."
-
-  LAYER "discovery" (5 songs):
-  Lesser-known tracks that match the mood.
-  Prioritize recent releases (last 3 years) and independent artists.
-  The listener should think "I've never heard this but it's perfect."
-
-- Energy level MUST match the photo. Low energy photo = slow/calm songs only. Do NOT mix.
-- If the photo has a visual aesthetic (film grain → 90s-2000s era, VSCO warm filter → 2010s indie, sharp modern → 2020s), weight song era accordingly.
-- If the photo contains culturally specific elements (Korean signs, Japanese scenery, European architecture), naturally include artists from that cultural sphere.
-- Include both Korean and international artists where it feels natural. Do NOT force Korean songs if the mood doesn't call for it.
-- NEVER recommend: royalty-free music, stock/library music, AI-generated tracks, or songs that exist only on YouTube.
-- Every song MUST be a real, commercially released track available on major streaming platforms (Spotify, Apple Music, Deezer).
-- Return ONLY valid JSON. No markdown, no explanation, no wrapping.`;
-
-const RETRY_PROMPT_SUFFIX =
-  "\n\nIMPORTANT: Output a single raw JSON object only. No code fences, no markdown.";
+Rules:
+- Energy MUST match photo (low=calm, high=intense)
+- Match song era to photo aesthetic (film grain→90s-2000s, warm filter→2010s indie, modern→2020s)
+- Include culturally relevant artists if photo has cultural elements
+- Mix Korean and international naturally
+- ONLY real commercially released tracks on Spotify/Apple Music/Deezer
+- NO royalty-free, stock, AI-generated, or YouTube-only music`;
 
 function stripDataUrlPrefix(base64Image: string): string {
   const match = /^data:image\/[a-zA-Z+.-]+;base64,(.+)$/.exec(base64Image.trim());
@@ -123,12 +90,9 @@ function isAnalyzeAndRecommendResponse(data: unknown): data is AnalyzeAndRecomme
   if (!data || typeof data !== "object") return false;
   const o = data as Record<string, unknown>;
   if (!isPhotoAnalysis(o.analysis)) return false;
-  if (!Array.isArray(o.songs) || o.songs.length !== 15) return false;
-  if (!o.songs.every(isAISongRecommendation)) return false;
-  const layers = o.songs.map((s) => s.layer);
-  for (const layer of ["anchor", "complement", "discovery"] as const) {
-    if (layers.filter((l) => l === layer).length !== 5) return false;
-  }
+  if (!Array.isArray(o.songs) || o.songs.length === 0) return false;
+  const valid = o.songs.filter(isAISongRecommendation);
+  if (valid.length < 5) return false;
   return true;
 }
 
@@ -150,23 +114,62 @@ function parseAnalyzeAndRecommendFromContent(content: string): AnalyzeAndRecomme
   if (!isAnalyzeAndRecommendResponse(parsed)) {
     throw new Error("Invalid analyze-and-recommend shape");
   }
+  const validSongs = (parsed as { songs: unknown[] }).songs.filter(
+    isAISongRecommendation,
+  ) as AISongRecommendation[];
   return {
     analysis: {
-      ...parsed.analysis,
-      energy: Math.min(1, Math.max(0, parsed.analysis.energy)),
+      ...(parsed as AnalyzeAndRecommendResponse).analysis,
+      energy: Math.min(
+        1,
+        Math.max(0, (parsed as AnalyzeAndRecommendResponse).analysis.energy),
+      ),
     },
-    songs: parsed.songs,
+    songs: validSongs,
   };
+}
+
+interface CallVisionOptions {
+  maxTokens: number;
+  temperature?: number;
+  timeoutMs: number;
+  jsonMode?: boolean;
+  detail?: "low" | "high" | "auto";
 }
 
 async function callVision(
   prompt: string,
   dataUrlForApi: string,
-  options: { maxTokens: number; temperature?: number; timeoutMs: number },
+  options: CallVisionOptions,
 ): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
+  }
+
+  const body: Record<string, unknown> = {
+    model: "gpt-4o-mini",
+    max_tokens: options.maxTokens,
+    temperature: options.temperature ?? 0.7,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          {
+            type: "image_url",
+            image_url: {
+              url: dataUrlForApi,
+              detail: options.detail ?? "auto",
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  if (options.jsonMode) {
+    body.response_format = { type: "json_object" };
   }
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -175,23 +178,7 @@ async function callVision(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      max_tokens: options.maxTokens,
-      temperature: options.temperature ?? 0.7,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            {
-              type: "image_url",
-              image_url: { url: dataUrlForApi },
-            },
-          ],
-        },
-      ],
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(options.timeoutMs),
   });
 
@@ -200,10 +187,10 @@ async function callVision(
     throw new Error(`OpenAI API error: ${response.status} ${errText}`);
   }
 
-  const body = (await response.json()) as {
+  const resBody = (await response.json()) as {
     choices?: Array<{ message?: { content?: string | null } }>;
   };
-  const msgContent = body.choices?.[0]?.message?.content;
+  const msgContent = resBody.choices?.[0]?.message?.content;
   if (!msgContent || typeof msgContent !== "string") {
     throw new Error("Empty model response");
   }
@@ -216,14 +203,18 @@ export async function analyzePhoto(base64Image: string): Promise<PhotoAnalysis> 
 
   let content = await callVision(ANALYZE_PROMPT, dataUrlForApi, {
     maxTokens: 500,
-    timeoutMs: 30_000,
+    timeoutMs: 20_000,
+    jsonMode: true,
+    detail: "low",
   });
   try {
     return parseAnalysisFromContent(content);
   } catch {
-    content = await callVision(ANALYZE_PROMPT + RETRY_PROMPT_SUFFIX, dataUrlForApi, {
+    content = await callVision(ANALYZE_PROMPT, dataUrlForApi, {
       maxTokens: 500,
-      timeoutMs: 30_000,
+      timeoutMs: 20_000,
+      jsonMode: true,
+      detail: "low",
     });
     return parseAnalysisFromContent(content);
   }
@@ -236,17 +227,21 @@ export async function analyzeAndRecommend(
   const dataUrlForApi = `data:image/jpeg;base64,${base64Clean}`;
 
   let content = await callVision(UNIFIED_PROMPT, dataUrlForApi, {
-    maxTokens: 2000,
-    temperature: 0.9,
-    timeoutMs: 45_000,
+    maxTokens: 1500,
+    temperature: 0.7,
+    timeoutMs: 30_000,
+    jsonMode: true,
+    detail: "low",
   });
   try {
     return parseAnalyzeAndRecommendFromContent(content);
   } catch {
-    content = await callVision(UNIFIED_PROMPT + RETRY_PROMPT_SUFFIX, dataUrlForApi, {
-      maxTokens: 2000,
-      temperature: 0.9,
-      timeoutMs: 45_000,
+    content = await callVision(UNIFIED_PROMPT, dataUrlForApi, {
+      maxTokens: 1500,
+      temperature: 0.7,
+      timeoutMs: 30_000,
+      jsonMode: true,
+      detail: "low",
     });
     return parseAnalyzeAndRecommendFromContent(content);
   }
