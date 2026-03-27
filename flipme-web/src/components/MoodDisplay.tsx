@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useId } from "react";
 import { useFlipStore } from "@/store/useFlipStore";
 
@@ -106,15 +105,6 @@ export default function MoodDisplay() {
       <p className="mt-5 text-sm leading-relaxed text-flip-primary">
         {analysis.description}
       </p>
-
-      <div className="mt-6 flex justify-center">
-        <Link
-          href="/result"
-          className="inline-flex rounded-full bg-flip-primary px-8 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-        >
-          음악 추천받기
-        </Link>
-      </div>
     </section>
   );
 }

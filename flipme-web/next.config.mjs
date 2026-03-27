@@ -12,6 +12,16 @@ const nextConfig = {
         hostname: "cdn-images.dzcdn.net",
         pathname: "/images/**",
       },
+      {
+        protocol: "https",
+        hostname: "cdns-images.dzcdn.net",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "api.deezer.com",
+        pathname: "/**",
+      },
     ],
   },
 };

@@ -39,7 +39,8 @@ export default function SelectedTrackDock() {
         />
         <Link
           href="/card"
-          className="block w-full rounded-full bg-flip-accent py-3 text-center text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          className="block w-full rounded-full bg-flip-accent py-3 text-center text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          aria-label="공유 카드 페이지로 이동"
         >
           공유 카드 만들기 →
         </Link>
