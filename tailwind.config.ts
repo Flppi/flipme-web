@@ -22,6 +22,7 @@ const config: Config = {
         "slide-up": "slideUp 0.4s ease-out",
         "pulse-soft": "pulseSoft 2s ease-in-out infinite",
         "prefetch-bar": "prefetchBar 4s ease-in-out infinite",
+        "gradient-shift": "gradientShift 6s ease-in-out infinite",
       },
       keyframes: {
         fadeIn: { "0%": { opacity: "0" }, "100%": { opacity: "1" } },
@@ -37,6 +38,11 @@ const config: Config = {
           "0%": { width: "0%", marginLeft: "0%" },
           "50%": { width: "60%", marginLeft: "20%" },
           "100%": { width: "0%", marginLeft: "100%" },
+        },
+        gradientShift: {
+          "0%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+          "100%": { backgroundPosition: "0% 50%" },
         },
       },
     },

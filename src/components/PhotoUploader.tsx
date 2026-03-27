@@ -4,8 +4,12 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resizeImage } from "@/lib/resize-image";
+import {
+  cancelAnalyzeStream,
+  isStreamActive,
+  startAnalyzeStream,
+} from "@/lib/stream-client";
 import { useFlipStore } from "@/store/useFlipStore";
-import type { DeezerTrack, PhotoAnalysis } from "@/types";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ACCEPT_ATTR =
@@ -29,23 +33,10 @@ function validateImageFile(file: File): string | null {
   return null;
 }
 
-interface PrefetchResult {
-  ok: boolean;
-  analysis?: PhotoAnalysis;
-  tracks?: DeezerTrack[];
-  error?: string;
-}
-
-interface PrefetchHandle {
-  abort: AbortController;
-  promise: Promise<PrefetchResult | null>;
-}
-
 export default function PhotoUploader() {
   const router = useRouter();
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const prefetchRef = useRef<PrefetchHandle | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -53,15 +44,13 @@ export default function PhotoUploader() {
   const setUploadedImage = useFlipStore((s) => s.setUploadedImage);
   const setAnalysis = useFlipStore((s) => s.setAnalysis);
   const setRecommendations = useFlipStore((s) => s.setRecommendations);
-  const isAnalyzing = useFlipStore((s) => s.isAnalyzing);
-  const setIsAnalyzing = useFlipStore((s) => s.setIsAnalyzing);
+  const analysis = useFlipStore((s) => s.analysis);
+  const isRecommending = useFlipStore((s) => s.isRecommending);
 
   const [processError, setProcessError] = useState<string | null>(null);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
-  const [prefetchStatus, setPrefetchStatus] = useState<
-    "idle" | "loading" | "done"
-  >("idle");
   const [cameraReady, setCameraReady] = useState<boolean | null>(null);
+  const [navigating, setNavigating] = useState(false);
 
   // ── Camera lifecycle ──────────────────────────────────────────────
 
@@ -122,66 +111,17 @@ export default function PhotoUploader() {
         el.srcObject = streamRef.current;
       }
     },
-    // streamRef is stable; this is intentionally empty for the callback ref
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  // Re-attach srcObject when cameraReady toggles and the element exists
   useEffect(() => {
     if (cameraReady && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
     }
   }, [cameraReady]);
 
-  // ── Prefetch ──────────────────────────────────────────────────────
-
-  const cancelPrefetch = useCallback(() => {
-    prefetchRef.current?.abort.abort();
-    prefetchRef.current = null;
-    setPrefetchStatus("idle");
-  }, []);
-
-  const startPrefetch = useCallback(
-    (imageDataUrl: string) => {
-      cancelPrefetch();
-      const abort = new AbortController();
-      setPrefetchStatus("loading");
-
-      const promise: Promise<PrefetchResult | null> = fetch(
-        "/api/analyze-and-recommend",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: imageDataUrl }),
-          signal: abort.signal,
-        },
-      )
-        .then(async (res) => {
-          const json = (await res.json()) as Omit<PrefetchResult, "ok">;
-          return { ok: res.ok, ...json } as PrefetchResult;
-        })
-        .then((data) => {
-          if (!abort.signal.aborted) {
-            setPrefetchStatus(
-              data.ok && data.analysis && data.tracks && data.tracks.length > 0
-                ? "done"
-                : "idle",
-            );
-          }
-          return data;
-        })
-        .catch(() => {
-          if (!abort.signal.aborted) setPrefetchStatus("idle");
-          return null;
-        });
-
-      prefetchRef.current = { abort, promise };
-    },
-    [cancelPrefetch],
-  );
-
-  // ── Image handling ────────────────────────────────────────────────
+  // ── Image handling (triggers stream) ───────────────────────────────
 
   const setImage = useCallback(
     (dataUrl: string) => {
@@ -190,9 +130,9 @@ export default function PhotoUploader() {
       setRecommendations([]);
       setProcessError(null);
       setAnalyzeError(null);
-      startPrefetch(dataUrl);
+      startAnalyzeStream(dataUrl);
     },
-    [setUploadedImage, setAnalysis, setRecommendations, startPrefetch],
+    [setUploadedImage, setAnalysis, setRecommendations],
   );
 
   const processFile = useCallback(
@@ -244,48 +184,44 @@ export default function PhotoUploader() {
     setImage(dataUrl);
   }, [setImage]);
 
-  // ── Analyze (uses prefetch if available) ──────────────────────────
+  // ── Navigate to results ────────────────────────────────────────────
 
   const handleAnalyze = useCallback(async () => {
     if (!uploadedImage) return;
-    setAnalyzeError(null);
-    setIsAnalyzing(true);
-    try {
-      let data: PrefetchResult | null = null;
-      if (prefetchRef.current && !prefetchRef.current.abort.signal.aborted) {
-        data = await prefetchRef.current.promise;
-      }
-      if (!data || !data.ok) {
-        const res = await fetch("/api/analyze-and-recommend", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: uploadedImage }),
-        });
-        const json = (await res.json()) as Omit<PrefetchResult, "ok">;
-        data = { ok: res.ok, ...json };
-      }
-      if (!data.ok) {
-        setAnalyzeError(
-          typeof data.error === "string" && data.error.length > 0
-            ? data.error
-            : "잠시 문제가 생겼어요. 다시 시도해 주세요.",
-        );
-        return;
-      }
-      if (!data.analysis || !data.tracks?.length) {
-        setAnalyzeError("잠시 문제가 생겼어요. 다시 시도해 주세요.");
-        return;
-      }
-      setAnalysis(data.analysis);
-      setRecommendations(data.tracks);
+
+    if (analysis) {
       router.push("/result");
-    } catch {
-      setAnalyzeError("잠시 문제가 생겼어요. 다시 시도해 주세요.");
-    } finally {
-      setIsAnalyzing(false);
-      setPrefetchStatus("idle");
+      return;
     }
-  }, [router, setAnalysis, setIsAnalyzing, setRecommendations, uploadedImage]);
+
+    setNavigating(true);
+    setAnalyzeError(null);
+
+    if (!isStreamActive()) {
+      startAnalyzeStream(uploadedImage);
+    }
+
+    await new Promise<void>((resolve) => {
+      const unsub = useFlipStore.subscribe((state) => {
+        if (state.analysis || !state.isRecommending) {
+          unsub();
+          resolve();
+        }
+      });
+      setTimeout(() => {
+        unsub();
+        resolve();
+      }, 20_000);
+    });
+
+    setNavigating(false);
+    const s = useFlipStore.getState();
+    if (s.analysis) {
+      router.push("/result");
+    } else {
+      setAnalyzeError("분석에 실패했습니다. 다시 시도해 주세요.");
+    }
+  }, [analysis, router, uploadedImage]);
 
   // ── D&D handlers ──────────────────────────────────────────────────
 
@@ -305,8 +241,10 @@ export default function PhotoUploader() {
 
   // ── Main button ───────────────────────────────────────────────────
 
+  const isWorking = navigating;
+
   const handleMainButton = useCallback(() => {
-    if (isAnalyzing) return;
+    if (isWorking) return;
     if (uploadedImage) {
       void handleAnalyze();
     } else if (cameraReady && streamRef.current) {
@@ -314,19 +252,20 @@ export default function PhotoUploader() {
     } else {
       cameraInputRef.current?.click();
     }
-  }, [isAnalyzing, uploadedImage, cameraReady, captureFromCamera, handleAnalyze]);
+  }, [isWorking, uploadedImage, cameraReady, captureFromCamera, handleAnalyze]);
 
   const handleReset = useCallback(() => {
-    cancelPrefetch();
+    cancelAnalyzeStream();
     setUploadedImage(null);
     setAnalysis(null);
     setRecommendations([]);
     setProcessError(null);
     setAnalyzeError(null);
     setCameraReady(null);
-  }, [cancelPrefetch, setUploadedImage, setAnalysis, setRecommendations]);
+    setNavigating(false);
+  }, [setUploadedImage, setAnalysis, setRecommendations]);
 
-  const prefetchDone = prefetchStatus === "done" && !isAnalyzing;
+  const analysisReady = !!analysis && !navigating;
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -345,27 +284,70 @@ export default function PhotoUploader() {
               alt="업로드한 사진 미리보기"
               fill
               unoptimized
-              className={`object-contain transition-opacity duration-300 ${isAnalyzing ? "opacity-50" : "opacity-100"}`}
+              className={`object-contain transition-opacity duration-300 ${isWorking ? "opacity-50" : "opacity-100"}`}
               sizes="(max-width: 640px) 100vw, 28rem"
             />
-            {isAnalyzing ? (
+            {isWorking ? (
               <div
-                className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/30 backdrop-blur-md animate-pulse-soft"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-4 backdrop-blur-md animate-pulse-soft"
+                style={
+                  analysis?.colors?.length
+                    ? {
+                        background: `linear-gradient(135deg, ${analysis.colors[0]}99, ${analysis.colors[1] ?? analysis.colors[0]}66, ${analysis.colors[2] ?? analysis.colors[0]}99)`,
+                        backgroundSize: "200% 200%",
+                        animation: "gradientShift 6s ease-in-out infinite, pulseSoft 2s ease-in-out infinite",
+                      }
+                    : { backgroundColor: "rgba(0,0,0,0.3)" }
+                }
                 aria-live="polite"
                 aria-busy="true"
               >
-                <div
-                  className="h-14 w-14 rounded-full bg-gradient-to-br from-flip-warm to-flip-accent opacity-90"
-                  aria-hidden
-                />
-                <p className="px-4 text-center text-sm font-medium text-white">
-                  사진의 감성을 읽고 곡을 고르고 있어요...
+                {analysis?.colors?.length ? (
+                  <div className="flex gap-1.5" aria-hidden>
+                    {analysis.colors.map((hex) => (
+                      <div
+                        key={hex}
+                        className="h-4 w-4 rounded-full ring-1 ring-white/40"
+                        style={{ backgroundColor: hex }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className="h-14 w-14 rounded-full bg-gradient-to-br from-flip-warm to-flip-accent opacity-90"
+                    aria-hidden
+                  />
+                )}
+                <p className="px-4 text-center text-sm font-medium text-white drop-shadow-sm">
+                  {analysis
+                    ? `"${analysis.mood}" 감성의 곡을 고르고 있어요...`
+                    : "사진의 감성을 읽고 곡을 고르고 있어요..."}
                 </p>
+                {analysis?.scene ? (
+                  <p className="px-6 text-center text-xs text-white/70 drop-shadow-sm">
+                    {analysis.scene}
+                  </p>
+                ) : null}
               </div>
             ) : null}
-            {prefetchStatus === "loading" && !isAnalyzing ? (
-              <div className="absolute bottom-3 left-3 right-3 overflow-hidden rounded-full bg-white/20 backdrop-blur-sm">
-                <div className="h-1 animate-prefetch-bar rounded-full bg-flip-accent/80" />
+            {/* 프리페치 중 컬러 그라디언트 프로그레스 바 */}
+            {isRecommending && !isWorking ? (
+              <div
+                className="absolute bottom-3 left-3 right-3 overflow-hidden rounded-full backdrop-blur-sm"
+                style={
+                  analysis?.colors?.length
+                    ? {
+                        background: `linear-gradient(90deg, ${analysis.colors.join(", ")})`,
+                        backgroundSize: "200% 100%",
+                        animation: "gradientShift 3s ease-in-out infinite",
+                        padding: "2px",
+                      }
+                    : { backgroundColor: "rgba(255,255,255,0.2)" }
+                }
+              >
+                {analysis?.colors?.length ? null : (
+                  <div className="h-1 animate-prefetch-bar rounded-full bg-flip-accent/80" />
+                )}
               </div>
             ) : null}
           </>
@@ -412,19 +394,24 @@ export default function PhotoUploader() {
       </div>
 
       {/* ── Status messages ── */}
-      {uploadedImage && prefetchStatus === "loading" && !isAnalyzing ? (
+      {uploadedImage && isRecommending && !analysis && !isWorking ? (
         <p className="text-center text-xs text-flip-muted animate-fade-in">
           어울리는 곡을 미리 찾고 있어요...
         </p>
       ) : null}
-      {prefetchDone ? (
+      {uploadedImage && isRecommending && analysis && !isWorking ? (
+        <p className="text-center text-xs text-flip-muted animate-fade-in">
+          &quot;{analysis.mood}&quot; 감성에 맞는 곡을 찾고 있어요...
+        </p>
+      ) : null}
+      {analysisReady && !isRecommending ? (
         <p className="text-center text-xs font-medium text-flip-primary animate-fade-in">
           준비 완료! 아래 체크 버튼을 눌러 결과를 확인하세요
         </p>
       ) : null}
 
       {/* ── "다른 사진 선택" ── */}
-      {uploadedImage && !isAnalyzing ? (
+      {uploadedImage && !isWorking ? (
         <div className="flex justify-center">
           <button
             type="button"
@@ -439,29 +426,28 @@ export default function PhotoUploader() {
 
       {/* ── Action buttons: Main (camera/check) centered + Gallery (+) right ── */}
       <div className="relative flex items-center justify-center py-1">
-        {/* Main button — absolute-center */}
         <button
           type="button"
           onClick={handleMainButton}
-          disabled={isAnalyzing}
+          disabled={isWorking}
           className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${
-            isAnalyzing
+            isWorking
               ? "bg-flip-primary text-white"
               : uploadedImage
-                ? prefetchDone
+                ? analysisReady
                   ? "bg-emerald-500 text-white shadow-emerald-500/30 focus-visible:ring-emerald-500 animate-pulse-soft"
                   : "bg-flip-primary text-white focus-visible:ring-flip-primary"
                 : "border-2 border-flip-muted/30 bg-white text-flip-primary hover:border-flip-accent hover:text-flip-accent focus-visible:ring-flip-accent"
           }`}
           aria-label={
-            isAnalyzing
+            isWorking
               ? "분석 중..."
               : uploadedImage
                 ? "결과 보기"
                 : "사진 촬영"
           }
         >
-          {isAnalyzing ? (
+          {isWorking ? (
             <svg
               className="h-6 w-6 animate-spin"
               viewBox="0 0 24 24"
@@ -520,11 +506,10 @@ export default function PhotoUploader() {
           )}
         </button>
 
-        {/* + button — positioned to the right of center */}
         <button
           type="button"
           onClick={() => galleryInputRef.current?.click()}
-          disabled={isAnalyzing}
+          disabled={isWorking}
           className="absolute left-[calc(50%+2.75rem)] flex h-11 w-11 items-center justify-center rounded-full border-2 border-flip-muted/30 bg-white text-flip-primary shadow-sm transition-colors hover:border-flip-accent hover:text-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 disabled:opacity-50"
           aria-label="갤러리에서 사진 선택"
         >

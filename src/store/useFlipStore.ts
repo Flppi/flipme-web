@@ -16,6 +16,7 @@ interface FlipStore {
   setUploadedImage: (image: string | null) => void;
   setAnalysis: (analysis: PhotoAnalysis | null) => void;
   setRecommendations: (tracks: DeezerTrack[]) => void;
+  addRecommendation: (track: DeezerTrack) => void;
   setSelectedTrack: (track: DeezerTrack | null) => void;
   setCardConfig: (config: ShareCardConfig | null) => void;
   setIsAnalyzing: (value: boolean) => void;
@@ -74,6 +75,11 @@ export const useFlipStore = create<FlipStore>((set, get) => ({
   setUploadedImage: (image) => set({ uploadedImage: image }),
   setAnalysis: (analysis) => set({ analysis }),
   setRecommendations: (tracks) => set({ recommendations: tracks }),
+  addRecommendation: (track) =>
+    set((state) => {
+      if (state.recommendations.some((t) => t.id === track.id)) return state;
+      return { recommendations: [...state.recommendations, track] };
+    }),
   setSelectedTrack: (track) => set({ selectedTrack: track }),
   setCardConfig: (config) => set({ cardConfig: config }),
   setIsAnalyzing: (value) => set({ isAnalyzing: value }),

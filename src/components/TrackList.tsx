@@ -8,6 +8,8 @@ interface TrackListProps {
   selectedId: number | null;
   onSelect: (track: DeezerTrack) => void;
   isLoading: boolean;
+  /** 스트리밍 중: 트랙이 점진적으로 도착하는 상태 */
+  isStreaming?: boolean;
 }
 
 const LAYERS: { key: RecommendationLayer; label: string; icon: string }[] = [
@@ -40,11 +42,21 @@ function TrackCardSkeleton() {
   );
 }
 
+function StreamingIndicator() {
+  return (
+    <div className="flex items-center justify-center gap-2 py-4">
+      <div className="h-5 w-5 animate-spin rounded-full border-2 border-flip-muted/30 border-t-flip-accent" />
+      <p className="text-xs text-flip-muted">더 많은 곡을 찾고 있어요...</p>
+    </div>
+  );
+}
+
 export default function TrackList({
   tracks,
   selectedId,
   onSelect,
   isLoading,
+  isStreaming = false,
 }: TrackListProps) {
   if (isLoading) {
     return (
@@ -76,6 +88,23 @@ export default function TrackList({
     );
   }
 
+  if (tracks.length === 0 && isStreaming) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div
+          className="flex flex-col gap-3 md:grid md:grid-cols-2 md:gap-4"
+          aria-busy="true"
+          aria-label="추천 곡을 불러오는 중"
+        >
+          {Array.from({ length: 4 }, (_, i) => (
+            <TrackCardSkeleton key={`sks-${i}`} />
+          ))}
+        </div>
+        <StreamingIndicator />
+      </div>
+    );
+  }
+
   if (tracks.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-flip-muted">
@@ -83,6 +112,8 @@ export default function TrackList({
       </p>
     );
   }
+
+  let globalIndex = 0;
 
   return (
     <div className="flex flex-col gap-10">
@@ -98,19 +129,29 @@ export default function TrackList({
               {label}
             </h3>
             <div className="flex flex-col gap-3 md:grid md:grid-cols-2 md:gap-4">
-              {layerTracks.map((track) => (
-                <TrackCard
-                  key={track.id}
-                  track={track}
-                  isSelected={selectedId === track.id}
-                  onSelect={onSelect}
-                  hideInlinePreview={selectedId === track.id}
-                />
-              ))}
+              {layerTracks.map((track) => {
+                const idx = globalIndex++;
+                return (
+                  <div
+                    key={track.id}
+                    className="animate-fade-in"
+                    style={{ animationDelay: `${idx * 80}ms`, animationFillMode: "backwards" }}
+                  >
+                    <TrackCard
+                      track={track}
+                      isSelected={selectedId === track.id}
+                      onSelect={onSelect}
+                      hideInlinePreview={selectedId === track.id}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </section>
         );
       })}
+
+      {isStreaming ? <StreamingIndicator /> : null}
     </div>
   );
 }

@@ -1,9 +1,12 @@
+import { parse as partialParse, Allow } from "partial-json";
 import type {
   AnalyzeAndRecommendResponse,
   AISongRecommendation,
   PhotoAnalysis,
   RecommendationLayer,
 } from "@/types";
+
+const MODEL = "gpt-4.1-mini";
 
 const ANALYZE_PROMPT = `You are a photo mood analyzer for a music recommendation service.
 Analyze this photo and return JSON with:
@@ -148,7 +151,7 @@ async function callVision(
   }
 
   const body: Record<string, unknown> = {
-    model: "gpt-4o-mini",
+    model: MODEL,
     max_tokens: options.maxTokens,
     temperature: options.temperature ?? 0.7,
     messages: [
@@ -220,6 +223,7 @@ export async function analyzePhoto(base64Image: string): Promise<PhotoAnalysis> 
   }
 }
 
+/** Non-streaming fallback */
 export async function analyzeAndRecommend(
   base64Image: string,
 ): Promise<AnalyzeAndRecommendResponse> {
@@ -244,5 +248,115 @@ export async function analyzeAndRecommend(
       detail: "low",
     });
     return parseAnalyzeAndRecommendFromContent(content);
+  }
+}
+
+// ── Streaming ────────────────────────────────────────────────────────
+
+export interface StreamCallbacks {
+  onAnalysis: (analysis: PhotoAnalysis) => void;
+  onSong: (song: AISongRecommendation) => void;
+}
+
+/**
+ * GPT 응답을 스트리밍으로 수신하면서 analysis와 개별 song을 즉시 콜백으로 전달.
+ * analysis 필드가 먼저 파싱되어 전달되고, songs 배열의 각 항목이 완성될 때마다 onSong 호출.
+ */
+export async function streamAnalyzeAndRecommend(
+  base64Image: string,
+  callbacks: StreamCallbacks,
+): Promise<void> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
+
+  const base64Clean = stripDataUrlPrefix(base64Image);
+  const dataUrlForApi = `data:image/jpeg;base64,${base64Clean}`;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1500,
+      temperature: 0.7,
+      stream: true,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: UNIFIED_PROMPT },
+            { type: "image_url", image_url: { url: dataUrlForApi, detail: "low" } },
+          ],
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenAI API error: ${response.status} ${errText}`);
+  }
+
+  if (!response.body) throw new Error("No response body");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = "";
+  let analysisEmitted = false;
+  let emittedSongCount = 0;
+  let sseBuffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    sseBuffer += decoder.decode(value, { stream: true });
+    const lines = sseBuffer.split("\n");
+    sseBuffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6).trim();
+      if (payload === "[DONE]") continue;
+
+      try {
+        const chunk = JSON.parse(payload) as {
+          choices?: Array<{ delta?: { content?: string } }>;
+        };
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (!delta) continue;
+
+        accumulated += delta;
+
+        try {
+          const partial = partialParse(accumulated, Allow.ALL) as Record<string, unknown>;
+
+          if (!analysisEmitted && partial.analysis && isPhotoAnalysis(partial.analysis)) {
+            callbacks.onAnalysis({
+              ...partial.analysis,
+              energy: Math.min(1, Math.max(0, partial.analysis.energy)),
+            });
+            analysisEmitted = true;
+          }
+
+          if (Array.isArray(partial.songs)) {
+            const complete = partial.songs.filter(isAISongRecommendation);
+            while (emittedSongCount < complete.length) {
+              callbacks.onSong(complete[emittedSongCount]);
+              emittedSongCount++;
+            }
+          }
+        } catch {
+          /* partial parse not yet possible */
+        }
+      } catch {
+        /* invalid SSE chunk */
+      }
+    }
   }
 }

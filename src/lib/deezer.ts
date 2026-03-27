@@ -8,6 +8,37 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+// ── In-memory search cache ───────────────────────────────────────────
+
+interface CacheEntry {
+  hits: DeezerSearchHit[];
+  ts: number;
+}
+
+const searchCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 500;
+
+function getCached(key: string): DeezerSearchHit[] | null {
+  const entry = searchCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL_MS) {
+    searchCache.delete(key);
+    return null;
+  }
+  return entry.hits;
+}
+
+function setCache(key: string, hits: DeezerSearchHit[]) {
+  if (searchCache.size >= MAX_CACHE_ENTRIES) {
+    const oldest = searchCache.keys().next().value;
+    if (oldest) searchCache.delete(oldest);
+  }
+  searchCache.set(key, { hits, ts: Date.now() });
+}
+
+// ── Deezer API helpers ───────────────────────────────────────────────
+
 interface DeezerErrorBody {
   error?: { type?: string; message?: string; code?: number };
 }
@@ -79,6 +110,10 @@ export async function searchTracks(
   query: string,
   limit: number = 25,
 ): Promise<DeezerSearchHit[]> {
+  const cacheKey = `${query}::${limit}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
   const url = `${DEEZER_BASE}/search?q=${encodeURIComponent(query)}&limit=${limit}`;
   const res = await fetchDeezerSearch(url);
 
@@ -103,6 +138,8 @@ export async function searchTracks(
       }
     }
   }
+
+  setCache(cacheKey, mapped);
   return mapped;
 }
 
@@ -128,6 +165,17 @@ async function matchSingle(
     );
 
   return relaxed ? { hit: relaxed, song } : null;
+}
+
+/** 스트리밍 API에서 사용: 단일 곡 Deezer 매칭 후 DeezerTrack 반환 */
+export async function matchSongOnDeezer(song: AISongRecommendation): Promise<DeezerTrack | null> {
+  const result = await matchSingle(song);
+  if (!result) return null;
+  return {
+    ...result.hit,
+    layer: song.layer,
+    reason: song.reason,
+  };
 }
 
 /** GPT가 추천한 곡을 Deezer에서 곡명·아티스트 기준으로 전체 병렬 매칭한다. */
