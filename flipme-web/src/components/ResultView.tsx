@@ -7,13 +7,14 @@ import MoodDisplay from "@/components/MoodDisplay";
 import SelectedTrackDock from "@/components/SelectedTrackDock";
 import TrackList from "@/components/TrackList";
 import { useFlipStore } from "@/store/useFlipStore";
-import type { DeezerTrack } from "@/types";
+import type { DeezerTrack, PhotoAnalysis } from "@/types";
 
 export default function ResultView() {
   const router = useRouter();
   const uploadedImage = useFlipStore((s) => s.uploadedImage);
   const analysis = useFlipStore((s) => s.analysis);
   const recommendations = useFlipStore((s) => s.recommendations);
+  const setAnalysis = useFlipStore((s) => s.setAnalysis);
   const setRecommendations = useFlipStore((s) => s.setRecommendations);
   const isRecommending = useFlipStore((s) => s.isRecommending);
   const setIsRecommending = useFlipStore((s) => s.setIsRecommending);
@@ -29,36 +30,57 @@ export default function ResultView() {
   }, [uploadedImage, analysis, router]);
 
   const load = useCallback(async () => {
-    if (!analysis) {
+    if (!uploadedImage || !analysis) {
       return;
     }
     setError(null);
     setIsRecommending(true);
     try {
-      const res = await fetch("/api/recommend", {
+      const res = await fetch("/api/analyze-and-recommend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analysis }),
+        body: JSON.stringify({ image: uploadedImage }),
       });
-      const data = (await res.json()) as { tracks?: DeezerTrack[]; error?: string };
+      const data = (await res.json()) as {
+        analysis?: PhotoAnalysis;
+        tracks?: DeezerTrack[];
+        error?: string;
+      };
       if (!res.ok) {
-        throw new Error(data.error ?? "recommend-fail");
+        throw new Error(
+          typeof data.error === "string" && data.error.length > 0
+            ? data.error
+            : "recommend-fail",
+        );
       }
-      setRecommendations(data.tracks ?? []);
+      if (!data.analysis || !data.tracks?.length) {
+        throw new Error("empty-tracks");
+      }
+      setAnalysis(data.analysis);
+      setRecommendations(data.tracks);
     } catch {
       setError("잠시 문제가 생겼어요. 다시 시도해 주세요.");
       setRecommendations([]);
     } finally {
       setIsRecommending(false);
     }
-  }, [analysis, setIsRecommending, setRecommendations]);
+  }, [
+    analysis,
+    uploadedImage,
+    setAnalysis,
+    setIsRecommending,
+    setRecommendations,
+  ]);
 
   useEffect(() => {
-    if (!analysis) {
+    if (!analysis || !uploadedImage) {
+      return;
+    }
+    if (recommendations.length > 0) {
       return;
     }
     void load();
-  }, [analysis, load]);
+  }, [analysis, uploadedImage, recommendations.length, load]);
 
   if (!uploadedImage || !analysis) {
     return (
@@ -91,7 +113,10 @@ export default function ResultView() {
             </p>
             <button
               type="button"
-              onClick={() => void load()}
+              onClick={() => {
+                setRecommendations([]);
+                void load();
+              }}
               className="mt-4 rounded-full bg-flip-primary px-6 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
               aria-label="추천 목록 다시 불러오기"
             >

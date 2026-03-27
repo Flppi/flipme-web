@@ -3,6 +3,7 @@
 import Image from "next/image";
 import AudioPlayer from "@/components/AudioPlayer";
 import ExportButtons from "@/components/ExportButtons";
+import { useFlipStore } from "@/store/useFlipStore";
 import type { DeezerTrack } from "@/types";
 
 export interface TrackCardProps {
@@ -19,6 +20,9 @@ export default function TrackCard({
   onSelect,
   hideInlinePreview = false,
 }: TrackCardProps) {
+  const analysis = useFlipStore((s) => s.analysis);
+  const trackEvent = useFlipStore((s) => s.trackEvent);
+
   return (
     <article
       className={`flex w-[min(100%,18rem)] shrink-0 gap-3 rounded-2xl border p-4 shadow-sm transition-colors md:min-w-0 md:w-full ${
@@ -42,22 +46,32 @@ export default function TrackCard({
             {track.title}
           </h3>
           <p className="truncate text-xs text-flip-muted">{track.artist}</p>
+          <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-flip-primary/80">
+            {track.reason}
+          </p>
         </div>
         {hideInlinePreview ? (
           <p className="text-[10px] text-flip-muted">
             미리듣기는 하단 플레이어에서 재생할 수 있어요.
           </p>
         ) : (
-          <AudioPlayer
-            trackId={track.id}
-            previewUrl={track.previewUrl}
-            compact
-          />
+          <AudioPlayer track={track} compact />
         )}
         <ExportButtons track={track} variant="compact" />
         <button
           type="button"
-          onClick={() => onSelect(track)}
+          onClick={() => {
+            trackEvent({
+              eventType: "track_select",
+              trackId: track.id,
+              trackTitle: track.title,
+              trackArtist: track.artist,
+              layer: track.layer,
+              photoMood: analysis?.mood,
+              photoEnergy: analysis?.energy,
+            });
+            onSelect(track);
+          }}
           className={`mt-1 w-full rounded-full px-3 py-2 text-xs font-semibold transition-opacity ${
             isSelected
               ? "bg-flip-primary text-white"
