@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import ExportButtons from "@/components/ExportButtons";
 import { useFlipStore } from "@/store/useFlipStore";
 
@@ -11,6 +11,28 @@ export default function CardPageContent() {
   const analysis = useFlipStore((s) => s.analysis);
   const selectedTrack = useFlipStore((s) => s.selectedTrack);
   const reset = useFlipStore((s) => s.reset);
+  const trackEvent = useFlipStore((s) => s.trackEvent);
+
+  const lastCardCreateTrackId = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!uploadedImage || !analysis || !selectedTrack) {
+      return;
+    }
+    if (lastCardCreateTrackId.current === selectedTrack.id) {
+      return;
+    }
+    lastCardCreateTrackId.current = selectedTrack.id;
+    trackEvent({
+      eventType: "card_create",
+      trackId: selectedTrack.id,
+      trackTitle: selectedTrack.title,
+      trackArtist: selectedTrack.artist,
+      layer: selectedTrack.layer,
+      photoMood: analysis.mood,
+      photoEnergy: analysis.energy,
+    });
+  }, [analysis, selectedTrack, trackEvent, uploadedImage]);
 
   useEffect(() => {
     if (!uploadedImage || !analysis || !selectedTrack) {
@@ -63,9 +85,47 @@ export default function CardPageContent() {
                 <div className="h-full w-2/5 animate-pulse rounded-full bg-flip-accent" />
               </div>
               <p className="mt-3">
-                html2canvas 기반보내기는 TASK-4에서 연결됩니다.
+                html2canvas 기반 보내기는 TASK-4에서 연결됩니다.
               </p>
             </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  trackEvent({
+                    eventType: "card_share",
+                    trackId: selectedTrack.id,
+                    trackTitle: selectedTrack.title,
+                    trackArtist: selectedTrack.artist,
+                    layer: selectedTrack.layer,
+                    photoMood: analysis.mood,
+                    photoEnergy: analysis.energy,
+                  });
+                }}
+                className="rounded-full bg-flip-accent px-6 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
+              >
+                인스타에 공유 (준비 중)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  trackEvent({
+                    eventType: "card_download",
+                    trackId: selectedTrack.id,
+                    trackTitle: selectedTrack.title,
+                    trackArtist: selectedTrack.artist,
+                    layer: selectedTrack.layer,
+                    photoMood: analysis.mood,
+                    photoEnergy: analysis.energy,
+                  });
+                }}
+                className="rounded-full border border-flip-muted/40 px-6 py-3 text-sm font-medium text-flip-primary transition-colors hover:border-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
+              >
+                이미지 저장 (준비 중)
+              </button>
+            </div>
+
             <ExportButtons track={selectedTrack} variant="full" />
             <div className="flex flex-col items-center gap-3 pb-12">
               <button
