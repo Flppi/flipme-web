@@ -116,7 +116,7 @@ export default function ExportButtons({
   if (variant === "compact") {
     return (
       <div
-        className="flex flex-wrap gap-1.5"
+        className="flex shrink-0 gap-1"
         role="group"
         aria-label="플랫폼에서 듣기"
       >
@@ -129,10 +129,10 @@ export default function ExportButtons({
             onClick={() => {
               logExport(link.platform);
             }}
-            className={`flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING[link.platform]}`}
+            className={`flex h-7 w-7 items-center justify-center rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING[link.platform]}`}
             aria-label={`${platformLabel(link.platform)}에서 열기`}
           >
-            <PlatformGlyph platform={link.platform} className="h-4 w-4" />
+            <PlatformGlyph platform={link.platform} className="h-3.5 w-3.5" />
           </a>
         ))}
         <a
@@ -142,10 +142,10 @@ export default function ExportButtons({
           onClick={() => {
             logExport();
           }}
-          className={`flex h-9 w-9 items-center justify-center rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING.deezer}`}
+          className={`flex h-7 w-7 items-center justify-center rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING.deezer}`}
           aria-label="Deezer에서 이 곡 열기"
         >
-          <PlatformGlyph platform="deezer" className="h-4 w-4" />
+          <PlatformGlyph platform="deezer" className="h-3.5 w-3.5" />
         </a>
       </div>
     );
@@ -162,7 +162,7 @@ export default function ExportButtons({
       >
         이 곡을 내 플랫폼에서 듣기
       </h2>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
         {links.map((link) => (
           <a
             key={link.platform}
@@ -172,10 +172,10 @@ export default function ExportButtons({
             onClick={() => {
               logExport(link.platform);
             }}
-            className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING[link.platform]}`}
+            className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 sm:py-3 ${BRAND_RING[link.platform]}`}
           >
             <PlatformGlyph platform={link.platform} className="h-5 w-5 shrink-0" />
-            {platformLabel(link.platform)}
+            <span className="truncate">{platformLabel(link.platform)}</span>
           </a>
         ))}
         <a
@@ -185,10 +185,10 @@ export default function ExportButtons({
           onClick={() => {
             logExport();
           }}
-          className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${BRAND_RING.deezer}`}
+          className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 sm:py-3 ${BRAND_RING.deezer}`}
         >
           <PlatformGlyph platform="deezer" className="h-5 w-5 shrink-0" />
-          {platformLabel("deezer")}
+          <span className="truncate">{platformLabel("deezer")}</span>
         </a>
       </div>
     </section>

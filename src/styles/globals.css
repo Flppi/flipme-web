@@ -4,6 +4,8 @@
 
 body {
   @apply bg-flip-surface text-flip-primary font-body antialiased;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 @layer utilities {

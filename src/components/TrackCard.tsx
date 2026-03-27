@@ -25,39 +25,28 @@ export default function TrackCard({
 
   return (
     <article
-      className={`flex w-[min(100%,18rem)] shrink-0 gap-3 rounded-2xl border p-4 shadow-sm transition-colors md:min-w-0 md:w-full ${
+      className={`flex w-full shrink-0 flex-col rounded-2xl border p-3 shadow-sm transition-colors ${
         isSelected
           ? "border-flip-accent bg-flip-accent/5 ring-2 ring-flip-accent/30"
           : "border-flip-muted/15 bg-white"
       }`}
     >
-      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-flip-surface">
-        <Image
-          src={track.albumCoverUrl}
-          alt={`${track.title} 앨범 커버`}
-          fill
-          className="object-cover"
-          sizes="96px"
-        />
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-2">
-        <div className="min-w-0">
+      <div className="flex gap-3">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-flip-surface">
+          <Image
+            src={track.albumCoverUrl}
+            alt={`${track.title} 앨범 커버`}
+            fill
+            className="object-cover"
+            sizes="64px"
+          />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
           <h3 className="truncate font-display text-sm font-semibold text-flip-primary">
             {track.title}
           </h3>
           <p className="truncate text-xs text-flip-muted">{track.artist}</p>
-          <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-flip-primary/80">
-            {track.reason}
-          </p>
         </div>
-        {hideInlinePreview ? (
-          <p className="text-[10px] text-flip-muted">
-            미리듣기는 하단 플레이어에서 재생할 수 있어요.
-          </p>
-        ) : (
-          <AudioPlayer track={track} compact />
-        )}
-        <ExportButtons track={track} variant="compact" />
         <button
           type="button"
           onClick={() => {
@@ -72,14 +61,26 @@ export default function TrackCard({
             });
             onSelect(track);
           }}
-          className={`mt-1 w-full rounded-full px-3 py-2 text-xs font-semibold transition-opacity ${
+          className={`my-auto shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-opacity ${
             isSelected
               ? "bg-flip-primary text-white"
               : "bg-flip-accent text-white hover:opacity-90"
           }`}
         >
-          이 곡 선택
+          {isSelected ? "선택됨" : "선택"}
         </button>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          {hideInlinePreview ? (
+            <p className="text-[10px] text-flip-muted">
+              하단 플레이어에서 재생
+            </p>
+          ) : (
+            <AudioPlayer track={track} compact />
+          )}
+        </div>
+        <ExportButtons track={track} variant="compact" />
       </div>
     </article>
   );

@@ -49,13 +49,13 @@ export default function CardPageContent() {
   }
 
   return (
-    <main className="flex flex-1 flex-col px-4 py-10 animate-fade-in sm:px-6 lg:items-center">
+    <main className="flex flex-1 flex-col px-4 py-6 animate-fade-in sm:px-6 sm:py-10 lg:items-center">
       <div className="mx-auto w-full max-w-4xl">
-        <header className="mb-8 text-center lg:text-left">
-          <h1 className="font-display text-2xl font-semibold text-flip-primary">
+        <header className="mb-6 text-center sm:mb-8 lg:text-left">
+          <h1 className="font-display text-xl font-semibold text-flip-primary sm:text-2xl">
             공유 카드
           </h1>
-          <p className="mt-2 text-sm text-flip-muted">
+          <p className="mt-1.5 text-sm text-flip-muted sm:mt-2">
             {selectedTrack.title} — {selectedTrack.artist}
           </p>
           <p className="mt-1 text-xs text-flip-muted">
@@ -63,15 +63,15 @@ export default function CardPageContent() {
           </p>
         </header>
 
-        <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
-          <div className="mx-auto flex aspect-[9/16] max-h-[min(70vh,520px)] w-full max-w-sm flex-col items-center justify-center rounded-2xl border-2 border-dashed border-flip-muted/35 bg-white/80 px-6 text-center text-sm text-flip-muted lg:mx-0">
+        <div className="grid gap-6 sm:gap-8 lg:grid-cols-2 lg:items-start">
+          <div className="mx-auto flex aspect-[9/16] max-h-[min(50vh,400px)] w-full max-w-xs flex-col items-center justify-center rounded-2xl border-2 border-dashed border-flip-muted/35 bg-white/80 px-6 text-center text-sm text-flip-muted sm:max-h-[min(70vh,520px)] sm:max-w-sm lg:mx-0">
             <p>카드 미리보기</p>
             <p className="mt-2 text-xs">1080×1920 스토리 비율</p>
           </div>
 
-          <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-5 sm:gap-8">
             <div
-              className="rounded-2xl border border-flip-muted/20 bg-flip-muted/10 px-4 py-6 text-center text-xs text-flip-muted"
+              className="rounded-2xl border border-flip-muted/20 bg-flip-muted/10 px-4 py-5 text-center text-xs text-flip-muted sm:py-6"
               role="status"
               aria-label="카드 생성 준비 중"
             >
@@ -103,7 +103,7 @@ export default function CardPageContent() {
                     photoEnergy: analysis.energy,
                   });
                 }}
-                className="rounded-full bg-flip-accent px-6 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
+                className="rounded-full bg-flip-accent px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 sm:px-6 sm:py-3"
               >
                 인스타에 공유 (준비 중)
               </button>
@@ -120,14 +120,14 @@ export default function CardPageContent() {
                     photoEnergy: analysis.energy,
                   });
                 }}
-                className="rounded-full border border-flip-muted/40 px-6 py-3 text-sm font-medium text-flip-primary transition-colors hover:border-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
+                className="rounded-full border border-flip-muted/40 px-5 py-2.5 text-sm font-medium text-flip-primary transition-colors hover:border-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 sm:px-6 sm:py-3"
               >
                 이미지 저장 (준비 중)
               </button>
             </div>
 
             <ExportButtons track={selectedTrack} variant="full" />
-            <div className="flex flex-col items-center gap-3 pb-12">
+            <div className="flex flex-col items-center gap-3 pb-8 sm:pb-12">
               <button
                 type="button"
                 onClick={() => router.back()}

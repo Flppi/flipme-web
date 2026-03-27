@@ -26,12 +26,12 @@ export default function MoodDisplay() {
   const barW = Math.min(100, Math.max(0, analysis.energy * 100));
 
   return (
-    <section className="w-full animate-fade-in rounded-2xl border border-flip-muted/20 bg-white p-5 shadow-sm">
-      <h2 className="font-display text-lg font-semibold text-flip-primary">
+    <section className="w-full animate-fade-in rounded-2xl border border-flip-muted/20 bg-white p-4 shadow-sm sm:p-5">
+      <h2 className="font-display text-base font-semibold text-flip-primary sm:text-lg">
         분석 결과
       </h2>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-1.5 sm:mt-4 sm:gap-2">
         {chipTexts.map((text, index) => (
           <span
             key={`${index}-${text}`}
@@ -102,7 +102,7 @@ export default function MoodDisplay() {
         </ul>
       </div>
 
-      <p className="mt-5 text-sm leading-relaxed text-flip-primary">
+      <p className="mt-4 text-xs leading-relaxed text-flip-primary sm:mt-5 sm:text-sm">
         {analysis.description}
       </p>
     </section>

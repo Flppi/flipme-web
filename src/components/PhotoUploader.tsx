@@ -334,7 +334,7 @@ export default function PhotoUploader() {
     <section className="flex w-full flex-col gap-4 animate-slide-up">
       {/* ── Viewfinder / Preview / Fallback ── */}
       <div
-        className="relative mx-auto h-80 w-full max-w-md overflow-hidden rounded-2xl border border-flip-muted/20 bg-black shadow-sm"
+        className="relative mx-auto h-64 w-full max-w-md overflow-hidden rounded-2xl border border-flip-muted/20 bg-black shadow-sm sm:h-80"
         onDrop={onDrop}
         onDragOver={onDragOver}
       >
@@ -437,20 +437,21 @@ export default function PhotoUploader() {
         </div>
       ) : null}
 
-      {/* ── Action buttons: Main (camera / check) + Gallery (+) ── */}
-      <div className="flex items-center justify-center gap-3">
+      {/* ── Action buttons: Main (camera/check) centered + Gallery (+) right ── */}
+      <div className="relative flex items-center justify-center py-1">
+        {/* Main button — absolute-center */}
         <button
           type="button"
           onClick={handleMainButton}
           disabled={isAnalyzing}
-          className={`flex items-center justify-center rounded-full shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${
+          className={`flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${
             isAnalyzing
-              ? "h-16 w-16 bg-flip-primary text-white"
+              ? "bg-flip-primary text-white"
               : uploadedImage
                 ? prefetchDone
-                  ? "h-16 w-16 bg-emerald-500 text-white shadow-emerald-500/30 focus-visible:ring-emerald-500 animate-pulse-soft"
-                  : "h-16 w-16 bg-flip-primary text-white focus-visible:ring-flip-primary"
-                : "h-16 w-16 border-2 border-flip-muted/30 bg-white text-flip-primary hover:border-flip-accent hover:text-flip-accent focus-visible:ring-flip-accent"
+                  ? "bg-emerald-500 text-white shadow-emerald-500/30 focus-visible:ring-emerald-500 animate-pulse-soft"
+                  : "bg-flip-primary text-white focus-visible:ring-flip-primary"
+                : "border-2 border-flip-muted/30 bg-white text-flip-primary hover:border-flip-accent hover:text-flip-accent focus-visible:ring-flip-accent"
           }`}
           aria-label={
             isAnalyzing
@@ -519,11 +520,12 @@ export default function PhotoUploader() {
           )}
         </button>
 
+        {/* + button — positioned to the right of center */}
         <button
           type="button"
           onClick={() => galleryInputRef.current?.click()}
           disabled={isAnalyzing}
-          className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-flip-muted/30 bg-white text-flip-primary shadow-sm transition-colors hover:border-flip-accent hover:text-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 disabled:opacity-50"
+          className="absolute left-[calc(50%+2.75rem)] flex h-11 w-11 items-center justify-center rounded-full border-2 border-flip-muted/30 bg-white text-flip-primary shadow-sm transition-colors hover:border-flip-accent hover:text-flip-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 disabled:opacity-50"
           aria-label="갤러리에서 사진 선택"
         >
           <svg
@@ -547,7 +549,7 @@ export default function PhotoUploader() {
       <input
         ref={galleryInputRef}
         type="file"
-        accept={ACCEPT_ATTR}
+        accept="image/*"
         className="sr-only"
         aria-label="갤러리에서 이미지 선택"
         onChange={onFileChange}

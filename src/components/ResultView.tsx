@@ -92,14 +92,14 @@ export default function ResultView() {
 
   return (
     <main
-      className={`flex flex-1 flex-col px-4 py-8 animate-fade-in sm:px-6 lg:items-center ${selectedTrack ? "pb-52" : ""}`}
+      className={`flex flex-1 flex-col px-4 py-6 animate-fade-in sm:px-6 sm:py-8 lg:items-center ${selectedTrack ? "pb-[13rem] sm:pb-56" : ""}`}
     >
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 lg:max-w-4xl">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 sm:gap-8 lg:max-w-4xl">
         <header className="text-center">
-          <h1 className="font-display text-2xl font-semibold text-flip-primary sm:text-3xl">
+          <h1 className="font-display text-xl font-semibold text-flip-primary sm:text-2xl md:text-3xl">
             당신의 분위기에 맞는 곡
           </h1>
-          <p className="mt-2 text-sm text-flip-muted">
+          <p className="mt-1.5 text-sm text-flip-muted sm:mt-2">
             {analysis.mood} · {analysis.scene}
           </p>
         </header>
@@ -107,7 +107,7 @@ export default function ResultView() {
         <MoodDisplay />
 
         {error ? (
-          <div className="rounded-2xl border border-flip-accent/30 bg-white p-6 text-center shadow-sm">
+          <div className="rounded-2xl border border-flip-accent/30 bg-white p-4 text-center shadow-sm sm:p-6">
             <p className="text-sm text-flip-accent" role="alert">
               {error}
             </p>
@@ -117,7 +117,7 @@ export default function ResultView() {
                 setRecommendations([]);
                 void load();
               }}
-              className="mt-4 rounded-full bg-flip-primary px-6 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2"
+              className="mt-3 rounded-full bg-flip-primary px-5 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 sm:mt-4 sm:px-6 sm:py-2.5"
               aria-label="추천 목록 다시 불러오기"
             >
               다시 시도
@@ -136,7 +136,7 @@ export default function ResultView() {
           </section>
         ) : null}
 
-        <div className="flex justify-center pb-8">
+        <div className="flex justify-center pb-4 sm:pb-8">
           <Link
             href="/"
             className="text-sm font-medium text-flip-muted underline-offset-4 transition-colors hover:text-flip-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flip-accent focus-visible:ring-offset-2 rounded-md"
