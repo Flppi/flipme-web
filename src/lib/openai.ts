@@ -10,12 +10,28 @@ const MODEL = "gpt-4.1-mini";
 
 const ANALYZE_PROMPT = `You are a photo mood analyzer for a music recommendation service.
 Analyze this photo and return JSON with:
-- mood: 한국어 감성 키워드 (예: "잔잔한", "활기찬", "몽환적인", "쓸쓸한")
+- mood: 한국어 감성 키워드 (2~4단어)
 - scene: 장소/상황 설명 (예: "카페에서 본 노을")
 - colors: 지배적 색상 hex 코드 3개
 - keywords: 영문 음악 검색용 키워드 5개 (분위기, 장르, 템포 관련)
-- energy: 0.0(잔잔) ~ 1.0(강렬) 에너지 레벨
+- energy: float (아래 스케일 엄격 적용)
 - description: 이 사진의 감성을 한 문장으로 (한국어)
+
+## energy 스케일 — 반드시 아래 기준을 따를 것:
+- 0.0~0.2: 매우 차분함 (명상, 고요한 풍경, 어둡고 정적인 장면)
+- 0.2~0.4: 잔잔함 (카페, 일상, 석양, 비 오는 날)
+- 0.4~0.6: 보통 (일반 외출, 도시 거리, 맑은 날, 산책)
+- 0.6~0.8: 활기참 (운동, 야외 활동, 밝은 색감, 사람들과 함께)
+- 0.8~1.0: 매우 에너지 넘침 (파티, 축제, 콘서트, 강렬한 색감)
+
+## mood 기준:
+- 차분한/편안한 계열뿐 아니라 다양한 감성을 포함할 것:
+  밝고 경쾌한 / 활기차고 역동적인 / 따뜻하고 포근한 /
+  시원하고 청량한 / 몽환적이고 신비로운 / 강렬하고 열정적인 /
+  자유롭고 개방적인 / 센치하고 그리운 / 쓸쓸하고 고독한
+
+중요: 밝은 색감, 동적인 구도, 사람이 많은 장면은 energy 0.5 이상이어야 한다.
+에너지 값 0.0~1.0 전체 범위를 활용하라.
 
 Return ONLY valid JSON. No markdown, no explanation.`;
 
@@ -23,13 +39,29 @@ const UNIFIED_PROMPT = `You are a music curator. Analyze this photo's mood and r
 Return JSON:
 {"analysis":{"mood":"한국어 감성","scene":"한국어 상황","colors":["#hex","#hex","#hex"],"keywords":["eng","keywords","for","display","only"],"energy":0.0,"description":"한국어 한 문장"},"songs":[{"title":"exact title","artist":"exact artist","reason":"한국어 이유 1문장","layer":"anchor"}]}
 
+## energy 스케일 — 반드시 아래 기준을 따를 것:
+- 0.0~0.2: 매우 차분함 (명상, 고요한 풍경, 어둡고 정적인 장면)
+- 0.2~0.4: 잔잔함 (카페, 일상, 석양, 비 오는 날)
+- 0.4~0.6: 보통 (일반 외출, 도시 거리, 맑은 날, 산책)
+- 0.6~0.8: 활기참 (운동, 야외 활동, 밝은 색감, 사람들과 함께)
+- 0.8~1.0: 매우 에너지 넘침 (파티, 축제, 콘서트, 강렬한 색감)
+
+중요: 밝은 색감, 동적인 구도, 사람이 많은 장면은 energy 0.5 이상이어야 한다.
+에너지 값 0.0~1.0 전체 범위를 활용하라.
+
+## mood 기준:
+- 차분한/편안한 계열뿐 아니라 다양한 감성을 포함할 것:
+  밝고 경쾌한 / 활기차고 역동적인 / 따뜻하고 포근한 /
+  시원하고 청량한 / 몽환적이고 신비로운 / 강렬하고 열정적인 /
+  자유롭고 개방적인 / 센치하고 그리운
+
 15 songs, 3 layers (5 each):
 - anchor: iconic songs for this exact mood/scene
 - complement: same emotion, unexpected genres
 - discovery: lesser-known, recent indie tracks
 
 Rules:
-- Energy MUST match photo (low=calm, high=intense)
+- Song tempo and energy MUST match the photo energy level from the scale above
 - Match song era to photo aesthetic (film grain→90s-2000s, warm filter→2010s indie, modern→2020s)
 - Include culturally relevant artists if photo has cultural elements
 - Mix Korean and international naturally

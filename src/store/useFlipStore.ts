@@ -36,6 +36,10 @@ function newSessionId(): string {
   return "";
 }
 
+const DEDUP_WINDOW_MS = 3_000;
+
+let lastTrackPlayEvent: { trackId: number; timestamp: number } | null = null;
+
 const initialState = {
   sessionId: "" as string,
   uploadedImage: null as string | null,
@@ -51,6 +55,18 @@ const initialState = {
 export const useFlipStore = create<FlipStore>((set, get) => ({
   ...initialState,
   trackEvent: (event) => {
+    if (event.eventType === "track_play") {
+      const now = Date.now();
+      if (
+        lastTrackPlayEvent &&
+        lastTrackPlayEvent.trackId === event.trackId &&
+        now - lastTrackPlayEvent.timestamp < DEDUP_WINDOW_MS
+      ) {
+        return;
+      }
+      lastTrackPlayEvent = { trackId: event.trackId, timestamp: now };
+    }
+
     let sessionId = get().sessionId;
     if (!sessionId) {
       sessionId = newSessionId();

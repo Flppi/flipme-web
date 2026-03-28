@@ -75,6 +75,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true });
     }
 
+    if (event.eventType === "track_play") {
+      const { data: recent } = await supabase
+        .from("analytics_events")
+        .select("created_at")
+        .eq("event_type", "track_play")
+        .eq("session_id", event.sessionId)
+        .eq("track_id", event.trackId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (recent && recent.length > 0) {
+        const lastTime = new Date(recent[0].created_at).getTime();
+        if (Date.now() - lastTime < 3_000) {
+          return NextResponse.json({ ok: true, deduplicated: true });
+        }
+      }
+    }
+
     const { error } = await supabase.from("analytics_events").insert({
       event_type: event.eventType,
       track_id: event.trackId,

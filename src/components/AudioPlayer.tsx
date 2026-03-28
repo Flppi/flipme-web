@@ -22,6 +22,7 @@ export default function AudioPlayer({ track, compact = false }: AudioPlayerProps
   const { id: trackId, previewUrl } = track;
   const audioRef = useRef<HTMLAudioElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const playIntentRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -38,6 +39,7 @@ export default function AudioPlayer({ track, compact = false }: AudioPlayerProps
     }
     audio.pause();
     audio.currentTime = 0;
+    playIntentRef.current = false;
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
@@ -51,6 +53,7 @@ export default function AudioPlayer({ track, compact = false }: AudioPlayerProps
   useEffect(() => {
     if (currentlyPlayingId !== trackId && isPlaying) {
       audioRef.current?.pause();
+      playIntentRef.current = false;
       setIsPlaying(false);
     }
   }, [currentlyPlayingId, isPlaying, trackId]);
@@ -75,6 +78,7 @@ export default function AudioPlayer({ track, compact = false }: AudioPlayerProps
       a.pause();
       a.currentTime = 0;
     }
+    playIntentRef.current = false;
     setIsPlaying(false);
     setCurrentTime(0);
     setCurrentlyPlayingId(null);
@@ -97,9 +101,14 @@ export default function AudioPlayer({ track, compact = false }: AudioPlayerProps
     if (isPlaying) {
       el.pause();
       setCurrentlyPlayingId(null);
+      playIntentRef.current = false;
       setIsPlaying(false);
       return;
     }
+    if (playIntentRef.current) {
+      return;
+    }
+    playIntentRef.current = true;
     trackEvent({
       eventType: "track_play",
       trackId: track.id,
@@ -116,6 +125,7 @@ export default function AudioPlayer({ track, compact = false }: AudioPlayerProps
       },
       () => {
         setCurrentlyPlayingId(null);
+        playIntentRef.current = false;
         setIsPlaying(false);
       },
     );
